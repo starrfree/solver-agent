@@ -1,0 +1,101 @@
+<aside class="sidebar">
+  <header class="brand">
+    <div class="logo">
+      <!-- <sa-icon name="sigma" [size]="18" [strokeWidth]="2" /> -->
+       <img src="favicon.svg" alt="Solver Agent">
+    </div>
+    <div class="title">
+      <span class="name">Solver Agent</span>
+      <span class="subtitle">Agentic problem solving</span>
+    </div>
+    <button
+      type="button"
+      class="icon-btn"
+      (click)="toggleCollapse()"
+      title="Collapse sidebar"
+      aria-label="Collapse sidebar"
+    >
+      <sa-icon name="panel-left-close" [size]="16" />
+    </button>
+  </header>
+
+  <button type="button" class="new-btn" (click)="openDialog()">
+    <sa-icon name="plus" [size]="14" [strokeWidth]="2.2" />
+    <span>New problem</span>
+  </button>
+
+  <div class="search">
+    <sa-icon name="search" [size]="14" />
+    <input
+      type="text"
+      placeholder="Search conversations"
+      [(ngModel)]="query"
+    />
+  </div>
+
+  <div class="list">
+    @if (store.conversationsLoading()) {
+      <div class="loading">
+        <sa-spinner [size]="18" />
+      </div>
+    } @else if (filtered().length === 0) {
+      <div class="empty-list">
+        @if (query()) {
+          <p>No matches for "{{ query() }}".</p>
+        } @else {
+          <p>No conversations yet.</p>
+          <button type="button" class="link" (click)="openDialog()">
+            Start your first one →
+          </button>
+        }
+      </div>
+    } @else {
+      @for (c of filtered(); track c._id) {
+        <sa-conversation-list-item
+          [conversation]="c"
+          [active]="c._id === store.selectedConversationId()"
+          (selectItem)="onSelect($event)"
+          (deleteItem)="onDelete($event)"
+        />
+      }
+    }
+  </div>
+
+  <footer class="footer">
+    <div class="user">
+      <span class="avatar">{{ userInitial() }}</span>
+      <div class="user-text">
+        <span class="user-id">{{ user.userId() }}</span>
+        <span class="user-sub">Local session</span>
+      </div>
+    </div>
+    <button
+      type="button"
+      class="icon-btn"
+      (click)="toggleTheme()"
+      [title]="theme.theme() === 'dark' ? 'Switch to light' : 'Switch to dark'"
+      [attr.aria-label]="theme.theme() === 'dark' ? 'Switch to light' : 'Switch to dark'"
+    >
+      <sa-icon [name]="theme.theme() === 'dark' ? 'sun' : 'moon'" [size]="16" />
+    </button>
+  </footer>
+</aside>
+
+@if (dialogOpen()) {
+  <sa-new-conversation-dialog
+    (dismiss)="closeDialog()"
+    (create)="createConversation($event)"
+  />
+}
+
+@if (pendingDeleteId()) {
+  <sa-confirm-dialog
+    title="Delete conversation?"
+    [message]="pendingDeleteMessage()"
+    confirmLabel="Delete"
+    cancelLabel="Cancel"
+    variant="danger"
+    (confirm)="confirmDelete()"
+    (dismiss)="cancelDelete()"
+  />
+}

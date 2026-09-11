@@ -1,0 +1,255 @@
+@if (!conversation() && !loading()) {
+  <section class="empty-pane">
+    <sa-empty-state
+      icon="message-square-plus"
+      title="No conversation selected"
+      message="Pick a conversation from the sidebar — or start a new one to launch the agent on a problem."
+    />
+  </section>
+} @else {
+  <section class="content">
+    @if (conversation(); as conv) {
+      <header class="topbar">
+        <div class="title-row">
+          <h1>{{ conv.title }}</h1>
+          <sa-status-pill [status]="conv.status" />
+        </div>
+        <div class="meta">
+          <button
+            type="button"
+            class="reasoning-btn"
+            [class.active]="sideTalkOpen()"
+            [attr.aria-pressed]="sideTalkOpen()"
+            (click)="toggleSideTalk()"
+            title="Ask the model about this problem — off the record"
+          >
+            <sa-icon name="messages-square" [size]="14" />
+            <span>Side-talk</span>
+          </button>
+          <button
+            type="button"
+            class="reasoning-btn"
+            [class.active]="graphOpen()"
+            [attr.aria-pressed]="graphOpen()"
+            (click)="toggleGraph()"
+            title="Visualize the proof dependence graph"
+          >
+            <sa-icon name="waypoints" [size]="14" />
+            <span>Graph</span>
+          </button>
+          <button
+            type="button"
+            class="reasoning-btn"
+            [disabled]="exporting()"
+            (click)="exportConversation()"
+            title="Download the complete record as a zip: Markdown and LaTeX reports, ledger.json, artifacts and code"
+          >
+            @if (exporting()) {
+              <sa-spinner [size]="12" />
+            } @else {
+              <sa-icon name="download" [size]="14" />
+            }
+            <span>Export</span>
+          </button>
+          @if (exportError(); as err) {
+            <span class="stream-tag warn" role="alert">
+              <sa-icon name="triangle-alert" [size]="13" />
+              {{ err }}
+            </span>
+          }
+          @if (showReasoning()) {
+            <button
+              type="button"
+              class="reasoning-btn"
+              [attr.aria-pressed]="reasoningOpen()"
+              (click)="toggleReasoning()"
+            >
+              @if (narrativeGenerating() && !narrative()) {
+                <sa-spinner [size]="12" />
+              } @else {
+                <sa-icon [name]="reasoningOpen() ? 'message-square' : 'text-align-start'" [size]="14" />
+              }
+              <span>{{ reasoningOpen() ? "Conversation" : "Solution" }}</span>
+            </button>
+          }
+          @if (ledger(); as l) {
+            <span class="ledger-status">
+              Ledger:
+              <sa-status-pill [status]="l.status" />
+            </span>
+          }
+          <sa-usage-meter [usage]="usage()" [conversationId]="conversationId()" />
+          @if (streamStatus() === "reconnecting") {
+            <span class="stream-tag warn">
+              <sa-icon name="wifi-off" [size]="13" />
+              Reconnecting (#{{ retryCount() }})
+            </span>
+          } @else if (streamStatus() === "connecting") {
+            <span class="stream-tag">
+              <sa-spinner [size]="12" />
+              Connecting…
+            </span>
+          }
+        </div>
+      </header>
+    }
+
+    @if (solverError(); as err) {
+      <div class="banner banner-error">
+        <sa-icon name="triangle-alert" [size]="16" />
+        <div class="banner-text">
+          <strong>Solver error</strong>
+          <span>{{ err.message }} ({{ err.code }})</span>
+        </div>
+        <button type="button" (click)="dismissError()" aria-label="Dismiss">
+          <sa-icon name="x" [size]="14" />
+        </button>
+      </div>
+    }
+
+    @if (isPaused() && !archived()) {
+      <div class="banner banner-warn">
+        <sa-icon [name]="isFailed() ? 'triangle-alert' : 'pause'" [size]="16" />
+        <div class="banner-text">
+          <strong>{{ isFailed() ? "Solver failed" : "Solver paused" }}</strong>
+          <span>
+            {{
+              isFailed()
+                ? "The last run failed. Click Resume to continue from the existing ledger, or send a follow-up to resume with new context."
+                : "Click Resume to continue from where it stopped, or send a follow-up to add new context."
+            }}
+          </span>
+        </div>
+        <button type="button" class="banner-action" (click)="onResume()" aria-label="Resume">
+          <sa-icon name="play" [size]="13" [strokeWidth]="2.2" />
+          Resume
+        </button>
+      </div>
+    }
+
+    @if (streamStatus() === "reconnecting") {
+      <div class="banner banner-warn">
+        <sa-icon name="wifi-off" [size]="16" />
+        <div class="banner-text">
+          <strong>Reconnecting…</strong>
+          <span>Lost connection to the live stream. Attempt #{{ retryCount() }}.</span>
+        </div>
+      </div>
+    }
+
+    @if (reasoningOpen()) {
+      <sa-reasoning-process
+        [narrative]="narrative()"
+        [generating]="narrativeGenerating()"
+        (generate)="onGenerateNarrative()"
+      />
+    } @else if (graphOpen()) {
+      <sa-proof-graph
+        [entries]="entries()"
+        [selectedId]="store.selectedEntryId()"
+        (selectEntry)="onGraphSelect($event)"
+        (openArtifacts)="onSelectEntry($event)"
+      />
+    } @else {
+      <div class="body-row" [class.with-side]="sideTalkOpen()">
+        <div class="main-col">
+          <div class="scroller" #scroller>
+            @if (loading()) {
+              <div class="skeleton-list">
+                @for (i of [0, 1, 2]; track i) {
+                  <div class="skeleton-card"></div>
+                }
+              </div>
+            } @else if (error()) {
+              <div class="error-state">
+                <sa-icon name="circle-x" [size]="22" />
+                <p>{{ error() }}</p>
+              </div>
+            } @else if (timeline().length === 0) {
+              <sa-empty-state
+                icon="hourglass"
+                title="Waiting for the agent to start"
+                message="The solver is loading. New steps and messages will appear here in real time."
+                [showCta]="false"
+              />
+            } @else {
+              <div class="timeline">
+                @for (item of timeline(); track item.id) {
+                  @if (item.kind === "message") {
+                    <sa-chat-message
+                      [message]="item.message"
+                      (fork)="onForkMessage(item.message)"
+                    />
+                  } @else {
+                    <sa-ledger-entry-card
+                      [entry]="item.entry"
+                      [selected]="item.entry._id === store.selectedEntryId()"
+                      (openArtifacts)="onSelectEntry($event)"
+                      (navigate)="onJumpTo($event)"
+                      (fork)="onForkEntry(item.entry)"
+                    />
+                  }
+                }
+                @if (!archived() && activeAgents().length > 0) {
+                  <sa-agent-activity [agents]="activeAgents()" />
+                }
+              </div>
+            }
+          </div>
+
+          @if (archived()) {
+            <div class="archived-bar">
+              <sa-icon name="archive" [size]="14" />
+              <span>This conversation is archived.</span>
+              <button type="button" class="link" (click)="unarchive()">Unarchive</button>
+            </div>
+          } @else {
+            <sa-composer
+              [running]="isSolverRunning()"
+              [paused]="isPaused()"
+              [archived]="archived()"
+              [reasoningSpeed]="reasoningSpeed()"
+              [cyAnalyst]="cyAnalyst()"
+              [referenceSeeker]="referenceSeeker()"
+              [draftKey]="conversationId()"
+              (send)="onSend($event)"
+              (pauseRequested)="onPause()"
+              (resumeRequested)="onResume()"
+              (reasoningSpeedChange)="onReasoningSpeedChange($event)"
+              (cyAnalystChange)="onCyAnalystChange($event)"
+              (referenceSeekerChange)="onReferenceSeekerChange($event)"
+            />
+          }
+        </div>
+
+        @if (sideTalkOpen()) {
+          <div
+            class="side-resizer"
+            saResizablePane
+            edge="left"
+            [min]="360"
+            [max]="900"
+            [base]="sideTalkWidth()"
+            (widthChange)="setSideTalkWidth($event)"
+          ></div>
+          <aside class="side-panel" [style.width.px]="sideTalkWidth()">
+            <sa-side-talk
+              [conversationId]="conversationId()"
+              (jumpToEntry)="onJumpTo($event)"
+              (openArtifact)="onSelectEntry($event)"
+            />
+          </aside>
+        }
+      </div>
+    }
+
+    @if (forkTarget(); as target) {
+      <sa-fork-dialog
+        [fromLabel]="target.label"
+        [defaultTitle]="forkDefaultTitle()"
+        (dismiss)="closeFork()"
+        (confirm)="confirmFork($event)"
+      />
+    }
+  </section>
+}

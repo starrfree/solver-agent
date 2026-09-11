@@ -1,0 +1,21 @@
+/* KaTeX overrides — keep math inheriting our typography color */
+.katex {
+  color: var(--sa-text);
+  font-size: 1em;
+}
+
+.katex-display {
+  margin: var(--sa-space-3) 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  > .katex {
+    white-space: nowrap;
+  }
+}
+
+/* LaTeX `center` environment (not supported by KaTeX) */
+.sa-latex-center {
+  text-align: center;
+  margin: var(--sa-space-3) 0;
+}

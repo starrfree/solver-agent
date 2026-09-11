@@ -1,0 +1,225 @@
+@if (!hasEntries()) {
+  <div class="graph-empty">
+    <sa-empty-state
+      icon="waypoints"
+      title="No proof steps yet"
+      message="The dependence graph will appear here as the solver records ledger steps and the links between them."
+      [showCta]="false"
+    />
+  </div>
+} @else {
+  <div class="graph" [class.lod-far]="lodFar()">
+    <div class="toolbar">
+      <div class="cluster zoom">
+        <button type="button" class="tool-btn" (click)="zoomOut()" aria-label="Zoom out" title="Zoom out">
+          <sa-icon name="minus" [size]="15" />
+        </button>
+        <span class="zoom-label" [title]="'Current zoom'">{{ zoomLabel() }}</span>
+        <button type="button" class="tool-btn" (click)="zoomIn()" aria-label="Zoom in" title="Zoom in">
+          <sa-icon name="plus" [size]="15" />
+        </button>
+      </div>
+      <button type="button" class="tool-btn labelled" (click)="resetView()" title="Fit graph to view">
+        <sa-icon name="maximize-2" [size]="14" />
+        <span>Fit</span>
+      </button>
+      @if (hasVerificationEdges()) {
+        <button
+          type="button"
+          class="tool-btn labelled"
+          [class.active]="showVerification()"
+          [attr.aria-pressed]="showVerification()"
+          (click)="toggleVerification()"
+          title="Toggle full-verification dependency links"
+        >
+          <sa-icon name="shield-check" [size]="14" />
+          <span>Verification links</span>
+        </button>
+      }
+    </div>
+
+    <svg
+      #canvas
+      class="canvas"
+      [class.panning]="panning()"
+      (wheel)="onWheel($event)"
+      (pointerdown)="onBackgroundPointerDown($event)"
+      (pointermove)="onPointerMove($event)"
+      (pointerup)="onPointerUp($event)"
+      (pointerleave)="onPointerUp($event)"
+      (selectstart)="onSelectStart($event)"
+    >
+      <defs>
+        <marker
+          id="sa-graph-arrow"
+          viewBox="0 0 10 10"
+          refX="8"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" class="arrow" />
+        </marker>
+        <marker
+          id="sa-graph-arrow-active"
+          viewBox="0 0 10 10"
+          refX="8"
+          refY="5"
+          markerWidth="7.5"
+          markerHeight="7.5"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-active" />
+        </marker>
+      </defs>
+
+      <g [attr.transform]="transform()">
+        <g class="edges">
+          @for (edge of renderEdges(); track edge.id) {
+            <path
+              class="edge"
+              [class.verification]="edge.verification"
+              [class.active]="edge.active"
+              [class.faded]="edge.faded"
+              [attr.d]="edge.d"
+              [attr.marker-end]="
+                edge.active ? 'url(#sa-graph-arrow-active)' : 'url(#sa-graph-arrow)'
+              "
+            />
+          }
+        </g>
+
+        <g class="nodes">
+          @for (item of renderNodes(); track item.node.id) {
+            <foreignObject
+              [attr.x]="item.node.x - pad"
+              [attr.y]="item.node.y - pad"
+              [attr.width]="item.node.width + pad * 2"
+              [attr.height]="item.node.height + pad * 2"
+            >
+              <div xmlns="http://www.w3.org/1999/xhtml" class="node-host">
+              <div
+                class="node"
+                [class.selected]="item.selected"
+                [class.dimmed]="item.dimmed"
+                [class.superseded]="item.node.entry.status === 'superseded'"
+                [class.rejected]="item.node.entry.status === 'rejected'"
+                [class.pending]="item.node.entry.status === 'pending'"
+                [style.--accent]="item.accent"
+                [style.--status]="item.statusColor"
+                [attr.data-entry-id]="item.node.id"
+                role="button"
+                tabindex="0"
+                [attr.aria-pressed]="item.selected"
+                (pointerdown)="$event.stopPropagation()"
+                (selectstart)="onSelectStart($event)"
+                (click)="onNodeClick(item.node, $event)"
+                (keydown.enter)="onNodeClick(item.node, $event)"
+                (keydown.space)="onNodeClick(item.node, $event); $event.preventDefault()"
+                (dblclick)="onNodeOpen(item.node, $event)"
+                (mouseenter)="onNodeEnter(item.node.id)"
+                (mouseleave)="onNodeLeave()"
+                [title]="item.node.entry.content.summary"
+              >
+                <span class="accent-bar" aria-hidden="true"></span>
+                <div class="node-head">
+                  <sa-type-badge [type]="item.node.entry.type" />
+                  <span class="status-dot" aria-hidden="true"></span>
+                </div>
+                <p class="node-summary">{{ item.node.entry.content.summary }}</p>
+                <div class="node-foot">
+                  @if (item.fast) {
+                    <span class="chip fast" title="Produced in fast mode">
+                      <sa-icon name="zap" [size]="10" />
+                    </span>
+                  }
+                  @if (item.hasArtifacts) {
+                    <button
+                      type="button"
+                      class="chip artifacts"
+                      (click)="onNodeOpen(item.node, $event)"
+                      (pointerdown)="$event.stopPropagation()"
+                      title="View artifacts"
+                    >
+                      <sa-icon name="paperclip" [size]="10" />
+                    </button>
+                  }
+                </div>
+              </div>
+              </div>
+            </foreignObject>
+          }
+        </g>
+      </g>
+    </svg>
+
+    <div class="overlay-stack">
+      @if (minimap(); as mm) {
+        <svg
+          class="minimap"
+          [attr.width]="mm.width"
+          [attr.height]="mm.height"
+          [attr.viewBox]="'0 0 ' + mm.width + ' ' + mm.height"
+          (pointerdown)="onMinimapPointerDown($event)"
+          (pointermove)="onMinimapPointerMove($event)"
+          (pointerup)="onMinimapPointerUp($event)"
+          (pointercancel)="onMinimapPointerUp($event)"
+          role="presentation"
+        >
+          @for (r of mm.nodes; track r.id) {
+            <rect
+              class="mm-node"
+              [class.selected]="r.selected"
+              [attr.x]="r.x"
+              [attr.y]="r.y"
+              [attr.width]="r.w"
+              [attr.height]="r.h"
+              [attr.fill]="r.color"
+              [attr.opacity]="r.dimmed ? 0.25 : 0.85"
+              rx="1.5"
+            />
+          }
+          <rect
+            class="mm-view"
+            [attr.x]="mm.view.x"
+            [attr.y]="mm.view.y"
+            [attr.width]="mm.view.w"
+            [attr.height]="mm.view.h"
+            rx="2"
+          />
+        </svg>
+      }
+
+      <div class="legend" [class.collapsed]="!legendOpen()">
+        <button type="button" class="legend-head" (click)="toggleLegend()">
+          <sa-icon [name]="legendOpen() ? 'chevron-down' : 'chevron-right'" [size]="13" />
+          <span>Legend</span>
+        </button>
+        @if (legendOpen()) {
+          <div class="legend-body">
+            <div class="legend-section">
+              @for (lt of legendTypes; track lt.type) {
+                <span class="legend-item">
+                  <span class="swatch" [style.background]="legendColor(lt.type)"></span>
+                  {{ lt.label }}
+                </span>
+              }
+            </div>
+            <div class="legend-section status">
+              <span class="legend-item"><span class="line"></span>depends on</span>
+              @if (showVerification()) {
+                <span class="legend-item"><span class="line verification"></span>full verif.</span>
+              }
+              <span class="legend-item"><span class="dot accepted"></span>accepted</span>
+              <span class="legend-item"><span class="dot pending"></span>pending</span>
+              <span class="legend-item"><span class="dot rejected"></span>rejected</span>
+              <span class="legend-item"><span class="dot superseded"></span>superseded</span>
+            </div>
+            <p class="legend-hint">Click a step to highlight its dependency cone · double-click for artifacts</p>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}

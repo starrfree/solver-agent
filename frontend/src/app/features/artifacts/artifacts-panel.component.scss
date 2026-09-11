@@ -1,0 +1,118 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--sa-bg-elev);
+  border-left: 1px solid var(--sa-border);
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--sa-border);
+  flex-shrink: 0;
+
+  .title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--sa-text);
+    font-size: var(--sa-fs-base);
+    font-weight: 600;
+
+    .entry-id {
+      font-family: var(--sa-font-mono);
+      font-size: var(--sa-fs-xs);
+      color: var(--sa-text-subtle);
+      padding: 1px 6px;
+      border-radius: var(--sa-radius-full);
+      background: var(--sa-surface);
+      border: 1px solid var(--sa-border);
+      font-weight: 500;
+    }
+  }
+}
+
+.icon-btn {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--sa-radius-sm);
+  color: var(--sa-text-muted);
+  transition: all var(--sa-transition-fast);
+
+  &:hover {
+    background: var(--sa-surface-hover);
+    color: var(--sa-text);
+  }
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--sa-border);
+  overflow-x: auto;
+  flex-shrink: 0;
+
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: var(--sa-fs-sm);
+  color: var(--sa-text-muted);
+  border-radius: var(--sa-radius-md) var(--sa-radius-md) 0 0;
+  position: relative;
+  white-space: nowrap;
+  transition: all var(--sa-transition-fast);
+
+  &:hover {
+    color: var(--sa-text);
+    background: var(--sa-surface-hover);
+  }
+
+  &.active {
+    color: var(--sa-text);
+    background: var(--sa-surface);
+
+    &::after {
+      content: "";
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: -1px;
+      height: 2px;
+      background: var(--sa-accent);
+      border-radius: 2px 2px 0 0;
+    }
+  }
+}
+
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--sa-bg);
+
+  > * {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+}

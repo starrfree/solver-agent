@@ -1,0 +1,9 @@
+sympy>=1.13
+numpy>=2.0
+scipy>=1.13
+matplotlib>=3.9
+# Calabi-Yau Analyst sub-agent. The pip package is pure Python; its native
+# solvers (PALP, TOPCOM, normaliz, CGAL) must come from the CYTools conda
+# environment (see README "Calabi-Yau Analyst / CYTools"). The sub-agent
+# degrades gracefully to sympy/numpy when a solver is unavailable.
+cytools>=1.4

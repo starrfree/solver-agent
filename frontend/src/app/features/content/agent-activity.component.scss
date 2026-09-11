@@ -1,0 +1,422 @@
+:host {
+  display: block;
+}
+
+/* ─────────── Outer chat-message-style frame ─────────── */
+.msg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 100%;
+  animation: msg-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sa-fs-xs);
+  color: var(--sa-text-subtle);
+}
+
+.role {
+  color: var(--sa-text-muted);
+  font-weight: 600;
+}
+
+.caption {
+  color: var(--sa-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ellipsis {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+
+  span {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.3;
+    animation: ellipsis-blink 1.2s ease-in-out infinite;
+  }
+  span:nth-child(2) { animation-delay: 0.18s; }
+  span:nth-child(3) { animation-delay: 0.36s; }
+}
+
+.bubble {
+  padding: 10px 12px;
+  border-radius: var(--sa-radius-lg);
+  background: var(--sa-surface);
+  border: 1px solid var(--sa-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+
+/* ─────────── Per-agent animated chips ─────────── */
+.chip {
+  --agent: var(--sa-accent);
+  --agent-soft: var(--sa-accent-soft);
+
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 8px;
+  border-radius: var(--sa-radius-full);
+  background: var(--agent-soft);
+  border: 1px solid color-mix(in srgb, var(--agent) 38%, transparent);
+  color: var(--sa-text);
+  font-size: var(--sa-fs-sm);
+  line-height: 1;
+  box-shadow: 0 0 0 0 var(--agent);
+  animation: chip-glow 2.4s ease-in-out infinite;
+
+  &[data-agent="main"] {
+    --agent: var(--sa-accent);
+    --agent-soft: var(--sa-accent-soft);
+
+    /* Main solver renders as just the orb — no pill wrapper. */
+    padding: 0;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    animation: none;
+
+    .text {
+      display: none;
+    }
+  }
+  &[data-agent="symbolic"] {
+    --agent: var(--sa-type-symbolic);
+    --agent-soft: color-mix(in srgb, var(--sa-type-symbolic) 16%, transparent);
+  }
+  &[data-agent="numerical"] {
+    --agent: var(--sa-type-numerical);
+    --agent-soft: color-mix(in srgb, var(--sa-type-numerical) 16%, transparent);
+  }
+  &[data-agent="cy"] {
+    --agent: var(--sa-type-cy-analyst);
+    --agent-soft: color-mix(in srgb, var(--sa-type-cy-analyst) 16%, transparent);
+  }
+  &[data-agent="reference"] {
+    --agent: var(--sa-type-reference-seeker);
+    --agent-soft: color-mix(in srgb, var(--sa-type-reference-seeker) 16%, transparent);
+  }
+  &[data-agent="step"] {
+    --agent: var(--sa-type-verification);
+    --agent-soft: color-mix(in srgb, var(--sa-type-verification) 18%, transparent);
+  }
+  &[data-agent="full"] {
+    --agent: var(--sa-type-final);
+    --agent-soft: color-mix(in srgb, var(--sa-type-final) 18%, transparent);
+  }
+  &[data-agent="narrator"] {
+    --agent: var(--sa-accent);
+    --agent-soft: var(--sa-accent-soft);
+  }
+}
+
+.text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.label {
+  font-weight: 600;
+  color: var(--sa-text);
+}
+
+.status {
+  color: var(--agent);
+  font-size: var(--sa-fs-xs);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.anim {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--agent);
+}
+
+/* ─────────── Main solver: pulsing orb with orbiting ring ─────────── */
+.anim-main {
+  .orb {
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle at 35% 30%,
+      color-mix(in srgb, var(--agent) 90%, white 25%),
+      var(--agent) 65%,
+      color-mix(in srgb, var(--agent) 60%, black 20%) 100%
+    );
+    box-shadow: 0 0 8px color-mix(in srgb, var(--agent) 60%, transparent);
+    animation: main-pulse 1.6s ease-in-out infinite;
+  }
+  .ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1.5px solid transparent;
+    border-top-color: var(--agent);
+    border-right-color: color-mix(in srgb, var(--agent) 50%, transparent);
+    animation: main-orbit 1.6s linear infinite;
+  }
+}
+
+/* ─────────── Symbolic: spinning Σ ─────────── */
+.anim-symbolic {
+  .sigma {
+    font-family: var(--sa-font-mono);
+    font-weight: 700;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--agent);
+    transform-origin: center 55%;
+    animation: sigma-tilt 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+    text-shadow: 0 0 6px color-mix(in srgb, var(--agent) 40%, transparent);
+  }
+}
+
+/* ─────────── Numerical: equalizer bars ─────────── */
+.anim-numerical {
+  align-items: flex-end;
+  gap: 2px;
+  padding-bottom: 4px;
+
+  .bar {
+    width: 2.5px;
+    background: var(--agent);
+    border-radius: 1px;
+    animation: bars-bounce 1s ease-in-out infinite;
+  }
+  .bar:nth-child(1) { height: 40%; animation-delay: 0s; }
+  .bar:nth-child(2) { height: 60%; animation-delay: 0.12s; }
+  .bar:nth-child(3) { height: 80%; animation-delay: 0.24s; }
+  .bar:nth-child(4) { height: 50%; animation-delay: 0.36s; }
+}
+
+/* ─────────── Reference seeker: spinning globe with orbiting probe ─────────── */
+.anim-reference {
+  .globe {
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    border: 1.5px solid var(--agent);
+    opacity: 0.75;
+  }
+  .meridian {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 50%;
+    width: 14px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    border: 1.5px solid color-mix(in srgb, var(--agent) 55%, transparent);
+    /* Animate width (not scaleX) so the fixed-px border stays constant. */
+    animation: reference-spin 1.8s ease-in-out infinite;
+  }
+  .sat {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    margin: -2px 0 0 -2px;
+    border-radius: 50%;
+    background: var(--agent);
+    box-shadow: 0 0 5px color-mix(in srgb, var(--agent) 60%, transparent);
+    animation: full-orbit 2.2s linear infinite;
+    transform-origin: 2px 2px;
+  }
+}
+
+/* ─────────── Step verification: scanning shield-tick ─────────── */
+.anim-step {
+  overflow: hidden;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--agent) 16%, transparent);
+
+  .check {
+    position: absolute;
+    inset: 5px;
+    border-radius: 50%;
+    border: 1.5px solid var(--agent);
+    border-right-color: transparent;
+    border-bottom-color: transparent;
+    transform: rotate(-45deg);
+    animation: step-pulse 1.6s ease-in-out infinite;
+  }
+  .scan {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--agent) 50%,
+      transparent
+    );
+    box-shadow: 0 0 6px var(--agent);
+    animation: step-scan 1.6s ease-in-out infinite;
+  }
+}
+
+/* ─────────── Full verification: orbiting dots ─────────── */
+.anim-full {
+  position: relative;
+  width: 22px;
+  height: 22px;
+
+  .dot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    margin: -2px 0 0 -2px;
+    border-radius: 50%;
+    background: var(--agent);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--agent) 60%, transparent);
+    animation: full-orbit 2s linear infinite;
+    transform-origin: 2px 2px;
+  }
+  .dot:nth-child(1) { animation-delay: 0s; }
+  .dot:nth-child(2) { animation-delay: -0.4s; }
+  .dot:nth-child(3) { animation-delay: -0.8s; }
+  .dot:nth-child(4) { animation-delay: -1.2s; }
+  .dot:nth-child(5) { animation-delay: -1.6s; }
+}
+
+/* ─────────── Proof narrator: writing lines with a moving pen ─────────── */
+.anim-narrator {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2.5px;
+  padding: 4px 3px;
+
+  .line {
+    height: 2px;
+    background: var(--agent);
+    border-radius: 1px;
+    opacity: 0.55;
+    transform-origin: left center;
+    animation: narrator-write 1.8s ease-in-out infinite;
+  }
+  .line:nth-child(1) { width: 14px; animation-delay: 0s; }
+  .line:nth-child(2) { width: 11px; animation-delay: 0.2s; }
+  .line:nth-child(3) { width: 13px; animation-delay: 0.4s; }
+  .pen {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--agent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--agent) 60%, transparent);
+    animation: narrator-pen 1.8s ease-in-out infinite;
+  }
+}
+
+/* ─────────────────────────── Keyframes ─────────────────────────── */
+
+@keyframes narrator-write {
+  0%, 100% { transform: scaleX(0.4); opacity: 0.35; }
+  50% { transform: scaleX(1); opacity: 0.8; }
+}
+
+@keyframes narrator-pen {
+  0%, 100% { transform: translateY(0); opacity: 0.6; }
+  50% { transform: translateY(-3px); opacity: 1; }
+}
+
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes chip-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--agent) 30%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--agent) 0%, transparent);
+  }
+}
+
+@keyframes ellipsis-blink {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+
+@keyframes main-pulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(0.85); filter: brightness(1.2); }
+}
+
+@keyframes main-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes sigma-tilt {
+  0%, 100% { transform: rotate(-12deg) scale(1); }
+  25% { transform: rotate(0deg) scale(1.08); }
+  50% { transform: rotate(12deg) scale(1); }
+  75% { transform: rotate(0deg) scale(1.08); }
+}
+
+@keyframes bars-bounce {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes reference-spin {
+  0%, 100% { width: 14px; }
+  50% { width: 2px; }
+}
+
+@keyframes step-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes step-scan {
+  0% { top: 10%; opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { top: 90%; opacity: 0; }
+}
+
+@keyframes full-orbit {
+  from {
+    transform: rotate(0deg) translateX(8px) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(8px) rotate(-360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip,
+  .ellipsis span,
+  .anim *,
+  .anim,
+  .msg {
+    animation-duration: 0s !important;
+    animation: none !important;
+  }
+}

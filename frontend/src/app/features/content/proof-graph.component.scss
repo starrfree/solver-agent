@@ -1,0 +1,481 @@
+:host {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.graph-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.graph {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  /* Prevent accidental text selection while panning the canvas. */
+  user-select: none;
+  -webkit-user-select: none;
+  background:
+    radial-gradient(
+      circle at 1px 1px,
+      color-mix(in srgb, var(--sa-text-subtle) 26%, transparent) 1px,
+      transparent 0
+    );
+  background-size: 26px 26px;
+  background-color: var(--sa-bg);
+}
+
+/* --- Toolbar -------------------------------------------------------------- */
+.toolbar {
+  position: absolute;
+  top: var(--sa-space-3);
+  left: var(--sa-space-4);
+  z-index: var(--sa-z-raised);
+  display: flex;
+  align-items: center;
+  gap: var(--sa-space-2);
+  padding: 5px;
+  border-radius: var(--sa-radius-full);
+  background: color-mix(in srgb, var(--sa-bg-elev) 86%, transparent);
+  border: 1px solid var(--sa-border);
+  box-shadow: var(--sa-shadow-md);
+  backdrop-filter: blur(8px);
+
+  .cluster.zoom {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .zoom-label {
+    min-width: 42px;
+    text-align: center;
+    font-size: var(--sa-fs-xs);
+    font-weight: 600;
+    color: var(--sa-text-muted);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+  }
+}
+
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 7px;
+  border-radius: var(--sa-radius-full);
+  color: var(--sa-text-muted);
+  font-size: var(--sa-fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--sa-transition-fast),
+    color var(--sa-transition-fast),
+    border-color var(--sa-transition-fast);
+
+  &:hover {
+    background: var(--sa-surface-hover);
+    color: var(--sa-text);
+  }
+
+  &.labelled {
+    padding: 0 11px;
+  }
+
+  &.active {
+    background: var(--sa-accent-soft);
+    color: var(--sa-accent);
+    border: 1px solid color-mix(in srgb, var(--sa-accent) 40%, transparent);
+  }
+}
+
+/* --- Canvas --------------------------------------------------------------- */
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+
+  &.panning {
+    cursor: grabbing;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+/* --- Edges ---------------------------------------------------------------- */
+.edge {
+  fill: none;
+  stroke: var(--sa-border-strong);
+  stroke-width: 1.5;
+  transition:
+    stroke var(--sa-transition-fast),
+    stroke-opacity var(--sa-transition-fast),
+    stroke-width var(--sa-transition-fast);
+
+  &.verification {
+    stroke-dasharray: 4 5;
+    stroke: color-mix(in srgb, var(--sa-type-verification) 60%, transparent);
+    opacity: 0.6;
+  }
+
+  &.active {
+    stroke: var(--sa-accent);
+    stroke-width: 2.25;
+    stroke-opacity: 1;
+  }
+
+  &.faded {
+    stroke-opacity: 0.12;
+  }
+}
+
+.arrow {
+  fill: var(--sa-border-strong);
+}
+
+.arrow-active {
+  fill: var(--sa-accent);
+}
+
+/* --- Nodes ---------------------------------------------------------------- */
+.node-host {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  /* Must match ProofGraphComponent.pad so the node's rect aligns with the layout geometry. */
+  padding: 16px;
+  /* Let presses on the transparent halo fall through to the canvas (pan / deselect). */
+  pointer-events: none;
+}
+
+.node {
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  position: relative;
+  box-sizing: border-box;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 12px 8px 15px;
+  border-radius: var(--sa-radius-lg);
+  /* Slightly translucent so dependency links remain visible underneath. */
+  background: color-mix(in srgb, var(--sa-surface) 82%, transparent);
+  backdrop-filter: blur(1px);
+  border: 1px solid var(--sa-border);
+  box-shadow: var(--sa-shadow-sm);
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    transform var(--sa-transition-fast),
+    box-shadow var(--sa-transition-fast),
+    border-color var(--sa-transition-fast),
+    opacity var(--sa-transition-base);
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--sa-border));
+    box-shadow: var(--sa-shadow-md);
+    transform: translateY(-1px);
+  }
+
+  &.selected {
+    border-color: var(--sa-accent);
+    box-shadow:
+      0 0 0 2px var(--sa-accent),
+      0 0 0 6px var(--sa-accent-soft),
+      var(--sa-shadow-md);
+  }
+
+  &.dimmed {
+    opacity: 0.32;
+    filter: saturate(0.7);
+  }
+
+  &.superseded {
+    border-style: dashed;
+    .node-summary,
+    .accent-bar {
+      opacity: 0.6;
+    }
+  }
+
+  &.rejected {
+    border-color: color-mix(in srgb, var(--sa-danger) 45%, var(--sa-border));
+  }
+
+  .accent-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--accent);
+  }
+
+  &.pending .accent-bar {
+    animation: graph-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+.node-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--status);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status) 22%, transparent);
+}
+
+.node-summary {
+  margin: 0;
+  font-size: var(--sa-fs-sm);
+  line-height: 1.35;
+  color: var(--sa-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1 1 auto;
+}
+
+.node-foot {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 14px;
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 16px;
+    min-width: 16px;
+    padding: 0 4px;
+    border-radius: var(--sa-radius-sm);
+    color: var(--sa-text-muted);
+    background: var(--sa-surface-active);
+  }
+
+  .chip.fast {
+    color: var(--sa-warning);
+    background: var(--sa-warning-soft);
+  }
+
+  .chip.artifacts {
+    cursor: pointer;
+    &:hover {
+      color: var(--sa-accent);
+      background: var(--sa-accent-soft);
+    }
+  }
+}
+
+@keyframes graph-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* --- Zoom-level detail (LOD) ----------------------------------------------
+   Far zoom: summaries are illegible anyway, so collapse cards to badge +
+   status and thicken edges so the proof reads as a clean structure. */
+.graph.lod-far {
+  .node {
+    gap: 0;
+    justify-content: center;
+  }
+
+  .node-summary,
+  .node-foot {
+    display: none;
+  }
+
+  .node-head {
+    justify-content: space-between;
+
+    sa-type-badge {
+      transform: scale(1.35);
+      transform-origin: left center;
+    }
+  }
+
+  .status-dot {
+    width: 11px;
+    height: 11px;
+  }
+
+  .edge {
+    stroke-width: 3;
+
+    &.active {
+      stroke-width: 4.5;
+    }
+  }
+}
+
+/* --- Bottom-right overlays (minimap + legend) ------------------------------ */
+.overlay-stack {
+  position: absolute;
+  bottom: var(--sa-space-3);
+  right: var(--sa-space-4);
+  z-index: var(--sa-z-raised);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sa-space-2);
+}
+
+/* --- Minimap ---------------------------------------------------------------- */
+.minimap {
+  display: block;
+  border-radius: var(--sa-radius-lg);
+  background: color-mix(in srgb, var(--sa-bg-elev) 90%, transparent);
+  border: 1px solid var(--sa-border);
+  box-shadow: var(--sa-shadow-md);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  touch-action: none;
+
+  .mm-node.selected {
+    stroke: var(--sa-accent);
+    stroke-width: 1.5;
+  }
+
+  .mm-view {
+    fill: color-mix(in srgb, var(--sa-accent) 10%, transparent);
+    stroke: var(--sa-accent);
+    stroke-width: 1.25;
+    pointer-events: none;
+  }
+}
+
+/* --- Legend --------------------------------------------------------------- */
+.legend {
+  width: 200px;
+  border-radius: var(--sa-radius-lg);
+  background: color-mix(in srgb, var(--sa-bg-elev) 90%, transparent);
+  border: 1px solid var(--sa-border);
+  box-shadow: var(--sa-shadow-md);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+
+  &.collapsed {
+    width: auto;
+  }
+
+  .legend-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 7px 10px;
+    color: var(--sa-text);
+    font-size: var(--sa-fs-xs);
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--sa-surface-hover);
+    }
+  }
+
+  .legend-body {
+    padding: 2px 11px 10px;
+  }
+
+  .legend-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 10px;
+    padding: 6px 0;
+
+    &.status {
+      grid-template-columns: 1fr 1fr;
+      border-top: 1px solid var(--sa-border);
+    }
+  }
+
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--sa-fs-xs);
+    color: var(--sa-text-muted);
+  }
+
+  .swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+
+    &.accepted {
+      background: var(--sa-success);
+    }
+    &.pending {
+      background: var(--sa-warning);
+    }
+    &.rejected {
+      background: var(--sa-danger);
+    }
+    &.superseded {
+      background: var(--sa-text-subtle);
+    }
+  }
+
+  .line {
+    width: 14px;
+    height: 0;
+    border-top: 2px solid var(--sa-border-strong);
+    flex-shrink: 0;
+
+    &.verification {
+      border-top-style: dashed;
+      border-top-color: color-mix(in srgb, var(--sa-type-verification) 70%, transparent);
+    }
+  }
+
+  .legend-hint {
+    margin: 8px 0 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--sa-border);
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: var(--sa-text-subtle);
+  }
+}

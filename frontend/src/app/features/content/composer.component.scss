@@ -1,0 +1,330 @@
+:host {
+  display: block;
+}
+
+.composer {
+  padding: 12px 24px 18px;
+  background: linear-gradient(to top, var(--sa-bg) 70%, transparent);
+}
+
+.wrap {
+  position: relative;
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  padding: 10px 10px 10px 14px;
+  border-radius: var(--sa-radius-lg);
+  background: var(--sa-surface);
+  border: 1px solid var(--sa-border);
+  transition:
+    border-color var(--sa-transition-fast),
+    box-shadow var(--sa-transition-fast);
+
+  &:focus-within {
+    border-color: var(--sa-accent);
+    box-shadow: 0 0 0 3px var(--sa-accent-soft);
+  }
+
+  &.disabled {
+    opacity: 0.7;
+  }
+}
+
+textarea {
+  flex: 1 1 auto;
+  resize: none;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--sa-text);
+  font-family: var(--sa-font-sans);
+  font-size: var(--sa-fs-base);
+  line-height: var(--sa-line-base);
+  max-height: 220px;
+  min-height: 22px;
+  padding: 4px 0;
+
+  &::placeholder {
+    color: var(--sa-text-subtle);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding-bottom: 2px;
+}
+
+.speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--sa-border);
+  background: var(--sa-surface);
+  color: var(--sa-text-muted);
+  font-size: var(--sa-fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition:
+    border-color var(--sa-transition-fast),
+    color var(--sa-transition-fast),
+    background var(--sa-transition-fast);
+
+  .speed-label {
+    line-height: 1;
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--sa-accent);
+    color: var(--sa-text);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  // &.is-fast {
+  //   color: var(--sa-accent);
+  //   border-color: var(--sa-accent);
+  //   background: var(--sa-accent-soft);
+  // }
+}
+
+.tools {
+  position: relative;
+  display: inline-flex;
+}
+
+.tools-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--sa-border);
+  background: var(--sa-surface);
+  color: var(--sa-text-muted);
+  font-size: var(--sa-fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition:
+    border-color var(--sa-transition-fast),
+    color var(--sa-transition-fast),
+    background var(--sa-transition-fast);
+
+  .tools-label {
+    line-height: 1;
+  }
+
+  .tools-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--sa-accent);
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--sa-accent);
+    color: var(--sa-text);
+  }
+
+  &.active,
+  &.on {
+    border-color: var(--sa-accent);
+    color: var(--sa-text);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.tools-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: min(300px, calc(100vw - 48px));
+  padding: 12px;
+  background: var(--sa-bg-elev);
+  border: 1px solid var(--sa-border);
+  border-radius: var(--sa-radius-lg);
+  box-shadow: var(--sa-shadow-lg);
+  z-index: var(--sa-z-dropdown);
+  cursor: default;
+}
+
+.tools-pop-title {
+  margin: 0 2px 8px;
+  font-size: var(--sa-fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sa-text-subtle);
+}
+
+.tool-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  text-align: left;
+  border-radius: var(--sa-radius-md);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background var(--sa-transition-fast);
+
+  &:hover {
+    background: var(--sa-surface-hover);
+  }
+
+  .tool-icon {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border-radius: var(--sa-radius-sm);
+    background: var(--sa-surface);
+    color: var(--sa-text-muted);
+  }
+
+  .tool-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .tool-name {
+    font-size: var(--sa-fs-sm);
+    font-weight: 500;
+    color: var(--sa-text);
+  }
+
+  .tool-desc {
+    font-size: var(--sa-fs-xs);
+    line-height: 1.35;
+    color: var(--sa-text-subtle);
+  }
+}
+
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: var(--sa-surface-active);
+  border: 1px solid var(--sa-border);
+  transition:
+    background var(--sa-transition-fast),
+    border-color var(--sa-transition-fast);
+
+  .knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--sa-text-subtle);
+    transition:
+      transform var(--sa-transition-fast),
+      background var(--sa-transition-fast);
+  }
+
+  &.on {
+    background: var(--sa-accent);
+    border-color: var(--sa-accent);
+
+    .knob {
+      transform: translateX(14px);
+      background: var(--sa-accent-text);
+    }
+  }
+}
+
+.hint {
+  font-family: var(--sa-font-mono);
+  font-size: var(--sa-fs-lg);
+  color: var(--sa-text-subtle);
+}
+
+.send {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--sa-radius-md);
+  background: var(--sa-accent);
+  color: var(--sa-accent-text);
+  transition: all var(--sa-transition-fast);
+
+  &:hover:not(:disabled) {
+    background: var(--sa-accent-hover);
+  }
+
+  &:disabled {
+    background: var(--sa-surface-active);
+    color: var(--sa-text-subtle);
+    cursor: not-allowed;
+  }
+
+  sa-icon {
+    transition: transform var(--sa-transition-fast);
+  }
+}
+
+.control {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--sa-radius-md);
+  background: var(--sa-surface);
+  color: var(--sa-text-muted);
+  border: 1px solid var(--sa-border);
+  transition:
+    background var(--sa-transition-fast),
+    color var(--sa-transition-fast),
+    border-color var(--sa-transition-fast);
+
+  &:hover:not(:disabled) {
+    background: var(--sa-surface-hover);
+    color: var(--sa-text);
+    border-color: var(--sa-accent);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &.pause {
+    color: var(--sa-warning, var(--sa-text-muted));
+    border-color: var(--sa-warning-soft, var(--sa-border));
+  }
+
+  &.resume {
+    color: var(--sa-accent);
+    border-color: var(--sa-accent-soft);
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "solver-agent-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve --proxy-config proxy.conf.json",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "lint": "ng lint"
+  },
+  "dependencies": {
+    "@angular/common": "^21.2.0",
+    "@angular/compiler": "^21.2.0",
+    "@angular/core": "^21.2.0",
+    "@angular/forms": "^21.2.0",
+    "@angular/platform-browser": "^21.2.0",
+    "@angular/platform-browser-dynamic": "^21.2.0",
+    "@angular/router": "^21.2.0",
+    "dompurify": "^3.4.2",
+    "elkjs": "^0.12.0",
+    "katex": "^0.16.45",
+    "lucide-angular": "^1.0.0",
+    "marked": "^18.0.3",
+    "prismjs": "^1.30.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.6.0",
+    "zone.js": "~0.15.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^21.2.0",
+    "@angular/cli": "^21.2.0",
+    "@angular/compiler-cli": "^21.2.0",
+    "@eslint/js": "^10.0.1",
+    "@types/dompurify": "^3.0.5",
+    "@types/katex": "^0.16.7",
+    "@types/node": "^22.0.0",
+    "@types/prismjs": "^1.26.5",
+    "angular-eslint": "21.3.1",
+    "eslint": "^10.0.3",
+    "typescript": "~5.9.0",
+    "typescript-eslint": "8.56.1"
+  }
+}

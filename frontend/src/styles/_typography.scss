@@ -1,0 +1,105 @@
+.sa-text-xs { font-size: var(--sa-fs-xs); }
+.sa-text-sm { font-size: var(--sa-fs-sm); }
+.sa-text-base { font-size: var(--sa-fs-base); }
+.sa-text-md { font-size: var(--sa-fs-md); }
+.sa-text-lg { font-size: var(--sa-fs-lg); }
+.sa-text-xl { font-size: var(--sa-fs-xl); }
+.sa-text-2xl { font-size: var(--sa-fs-2xl); }
+
+.sa-font-mono { font-family: var(--sa-font-mono); }
+.sa-text-muted { color: var(--sa-text-muted); }
+.sa-text-subtle { color: var(--sa-text-subtle); }
+
+.markdown-body {
+  color: var(--sa-text);
+  font-size: var(--sa-fs-base);
+  line-height: var(--sa-line-loose);
+
+  > * + * { margin-top: var(--sa-space-3); }
+
+  h1, h2, h3, h4 {
+    font-weight: 600;
+    line-height: var(--sa-line-tight);
+    margin-top: var(--sa-space-5);
+  }
+  h1 { font-size: var(--sa-fs-2xl); }
+  h2 { font-size: var(--sa-fs-xl); }
+  h3 { font-size: var(--sa-fs-lg); }
+  h4 { font-size: var(--sa-fs-md); }
+
+  p {
+    color: var(--sa-text);
+  }
+
+  ul, ol {
+    padding-left: 1.4em;
+
+    li + li { margin-top: var(--sa-space-1); }
+  }
+
+  blockquote {
+    border-left: 2px solid var(--sa-border-strong);
+    padding-left: var(--sa-space-3);
+    color: var(--sa-text-muted);
+  }
+
+  code {
+    font-family: var(--sa-font-mono);
+    font-size: 0.92em;
+    padding: 0.12em 0.4em;
+    border-radius: var(--sa-radius-sm);
+    background: var(--sa-surface-active);
+    color: var(--sa-text);
+  }
+
+  pre {
+    background: var(--sa-bg-elev);
+    border: 1px solid var(--sa-border);
+    border-radius: var(--sa-radius-md);
+    padding: var(--sa-space-3) var(--sa-space-4);
+    overflow-x: auto;
+    font-size: var(--sa-fs-sm);
+    line-height: var(--sa-line-base);
+
+    code {
+      background: none;
+      padding: 0;
+      font-size: inherit;
+    }
+  }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--sa-border);
+    margin: var(--sa-space-5) 0;
+  }
+
+  a {
+    color: var(--sa-accent);
+    text-decoration: underline;
+    text-decoration-color: var(--sa-accent-soft);
+    text-underline-offset: 3px;
+
+    &:hover {
+      color: var(--sa-accent-hover);
+      text-decoration-color: currentColor;
+    }
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--sa-fs-sm);
+
+    th, td {
+      padding: var(--sa-space-2) var(--sa-space-3);
+      border-bottom: 1px solid var(--sa-border);
+      text-align: left;
+    }
+
+    th {
+      color: var(--sa-text-muted);
+      font-weight: 600;
+    }
+  }
+}

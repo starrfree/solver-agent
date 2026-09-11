@@ -1,0 +1,58 @@
+<div class="shell">
+  <button
+    type="button"
+    class="reveal-sidebar"
+    [class.visible]="layout.sidebarCollapsed()"
+    [attr.tabindex]="layout.sidebarCollapsed() ? 0 : -1"
+    [attr.aria-hidden]="layout.sidebarCollapsed() ? null : 'true'"
+    (click)="layout.toggleSidebar()"
+    title="Show sidebar"
+    aria-label="Show sidebar"
+  >
+    <sa-icon name="panel-left-open" [size]="16" />
+  </button>
+
+  <div
+    class="pane sidebar-pane"
+    [class.collapsed]="layout.sidebarCollapsed()"
+    [style.width.px]="layout.sidebarCollapsed() ? 0 : layout.sidebarWidth()"
+    [attr.aria-hidden]="layout.sidebarCollapsed() ? 'true' : null"
+    [attr.inert]="layout.sidebarCollapsed() ? '' : null"
+  >
+    <sa-sidebar />
+  </div>
+  @if (!layout.sidebarCollapsed()) {
+    <div
+      class="resizer"
+      saResizablePane
+      edge="right"
+      [min]="220"
+      [max]="360"
+      [base]="layout.sidebarWidth()"
+      (widthChange)="layout.setSidebarWidth($event)"
+    ></div>
+  }
+
+  <div
+    class="pane content-pane"
+    [class.has-reveal]="layout.sidebarCollapsed()"
+  >
+    <sa-content />
+    <router-outlet />
+  </div>
+
+  @if (layout.artifactsOpen()) {
+    <div
+      class="resizer"
+      saResizablePane
+      edge="left"
+      [min]="320"
+      [max]="560"
+      [base]="layout.artifactsWidth()"
+      (widthChange)="layout.setArtifactsWidth($event)"
+    ></div>
+    <div class="pane artifacts-pane" [style.width.px]="layout.artifactsWidth()">
+      <sa-artifacts-panel />
+    </div>
+  }
+</div>
