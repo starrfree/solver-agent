@@ -7,13 +7,15 @@
  *
  * Callers always go through `createResponse` / `runManualAgentLoop` /
  * `runPreviousResponseLoop` exported from this module; they never import
- * the underlying `openaiClient` or `claudeClient` directly.
+ * the underlying `openaiClient`, `claudeClient`, `hfClient` or
+ * `geminiClient` directly.
  */
 import type { Response, ResponseInputItem } from "openai/resources/responses/responses";
 
 import type { ReasoningSpeed } from "../db/types";
 
 import * as claudeClient from "./claudeClient";
+import * as geminiClient from "./geminiClient";
 import * as hfClient from "./hfClient";
 import * as openaiClient from "./openaiClient";
 import { recordResponseUsageSafe } from "./usageTracker";
@@ -36,7 +38,7 @@ import type {
 // on {@link ReasoningEffort}; Claude maps it to adaptive-thinking levels.
 // -------------------------------------------------------------------------
 
-export type LlmProvider = "openai" | "claude" | "huggingface";
+export type LlmProvider = "openai" | "claude" | "huggingface" | "gemini";
 
 interface LlmTarget {
   provider: LlmProvider;
@@ -48,7 +50,7 @@ type Matrix<T> = Record<ReasoningSpeed, Record<ReasoningRole, T>>;
 
 const PROVIDER_MATRIX: Matrix<LlmProvider> = {
   high: {
-    // Previous all-OpenAI high configuration:
+    // Default all-OpenAI high configuration:
     main_solver: "openai",
     full_verification: "openai",
     step_verification: "openai",
@@ -60,30 +62,44 @@ const PROVIDER_MATRIX: Matrix<LlmProvider> = {
     // step_verification: "claude",
     // computation: "claude",
     // cy_analyst: "claude",
+    // Gemini high configuration:
+    // main_solver: "gemini",
+    // full_verification: "gemini",
+    // step_verification: "gemini",
+    // computation: "gemini",
+    // cy_analyst: "gemini",
     // Must stay on OpenAI: the Reference Seeker relies on the hosted
     // web_search tool, which only the OpenAI back-end supports.
     reference_seeker: "openai",
     // proof_narrator: "claude",
+    // proof_narrator: "gemini",
     // Stays on OpenAI: the side-talk UI can enable hosted web_search
     // per message, which only the OpenAI back-end supports.
     side_talk: "openai",
   },
   fast: {
-    // Previous all-OpenAI fast configuration:
+    // Default all-OpenAI fast configuration:
     main_solver: "openai",
     full_verification: "openai",
     step_verification: "openai",
     computation: "openai",
     cy_analyst: "openai",
-    proof_narrator: "openai",
     // main_solver: "huggingface",
     // full_verification: "huggingface",
     // step_verification: "huggingface",
     // computation: "huggingface",
     // cy_analyst: "huggingface",
+    // Gemini fast configuration:
+    // main_solver: "gemini",
+    // full_verification: "gemini",
+    // step_verification: "gemini",
+    // computation: "gemini",
+    // cy_analyst: "gemini",
     // Must stay on OpenAI (hosted web_search).
     reference_seeker: "openai",
+    proof_narrator: "openai",
     // proof_narrator: "huggingface",
+    // proof_narrator: "gemini",
     // Stays on OpenAI (optional hosted web_search per message).
     side_talk: "openai",
   },
@@ -91,7 +107,7 @@ const PROVIDER_MATRIX: Matrix<LlmProvider> = {
 
 const MODEL_MATRIX: Matrix<string> = {
   high: {
-    // Previous all-OpenAI high configuration:
+    // Default all-OpenAI high configuration:
     main_solver: "gpt-5.6-sol",
     full_verification: "gpt-5.6-sol",
     step_verification: "gpt-5.6-sol",
@@ -109,12 +125,25 @@ const MODEL_MATRIX: Matrix<string> = {
     // computation: "claude-opus-5",
     // cy_analyst: "claude-opus-5",
     // proof_narrator: "claude-sonnet-5",
+    //
+    // Gemini high configuration (list state Sep 2026): Gemini 3.1 Pro is
+    // Google's strongest reasoner and drives the main solver, the full
+    // verifier and the CY analyst; Gemini 3.8 Flash (their most capable
+    // Flash tier, built for long-horizon agentic work) covers step
+    // verification, computation and narration at a fifth of Pro's price.
+    // Both support structured output combined with function calling.
+    // main_solver: "gemini-3.1-pro-preview",
+    // full_verification: "gemini-3.1-pro-preview",
+    // step_verification: "gemini-3.8-flash",
+    // computation: "gemini-3.8-flash",
+    // cy_analyst: "gemini-3.1-pro-preview",
+    // proof_narrator: "gemini-3.8-flash",
 
     reference_seeker: "gpt-5.6-sol",
     side_talk: "gpt-5.6-sol",
   },
   fast: {
-    // Previous all-OpenAI fast configuration:
+    // Default all-OpenAI fast configuration:
     main_solver: "gpt-5.6-luna",
     full_verification: "gpt-5.6-luna",
     step_verification: "gpt-5.6-luna",
@@ -133,6 +162,16 @@ const MODEL_MATRIX: Matrix<string> = {
     // computation: "deepseek-ai/DeepSeek-V4-Flash-0731:together",
     // cy_analyst: "deepseek-ai/DeepSeek-V4-Pro-0813:together",
     // proof_narrator: "deepseek-ai/DeepSeek-V4-Flash-0731:together",
+    //
+    // Gemini fast configuration (list state Sep 2026): Gemini 3.8 Flash
+    // everywhere — $0.75/$3.75 per MTok with a 1M context, thinking_level
+    // HIGH for solving and verification.
+    // main_solver: "gemini-3.8-flash",
+    // full_verification: "gemini-3.8-flash",
+    // step_verification: "gemini-3.8-flash",
+    // computation: "gemini-3.8-flash",
+    // cy_analyst: "gemini-3.8-flash",
+    // proof_narrator: "gemini-3.8-flash",
 
     reference_seeker: "gpt-5.6-luna",
     side_talk: "gpt-5.6-terra",
@@ -164,11 +203,12 @@ const EFFORT_MATRIX: Matrix<ReasoningEffort> = {
 
 const CLIENT_BY_PROVIDER: Record<
   LlmProvider,
-  typeof openaiClient | typeof claudeClient | typeof hfClient
+  typeof openaiClient | typeof claudeClient | typeof hfClient | typeof geminiClient
 > = {
   openai: openaiClient,
   claude: claudeClient,
   huggingface: hfClient,
+  gemini: geminiClient,
 };
 
 /**
@@ -226,8 +266,9 @@ function targetFor(
 
 /**
  * True when `err` indicates a broken `previous_response_id` chain: the
- * in-process cache of the Claude / HuggingFace emulation was evicted, or
- * OpenAI no longer has the stored response (expired, deleted, or lost).
+ * in-process cache of the Claude / HuggingFace / Gemini emulation was
+ * evicted, or OpenAI no longer has the stored response (expired, deleted, or
+ * lost).
  * Chained sub-agent loops treat this as recoverable — their tasks are
  * stateless, so they restart from their initial input instead of failing
  * the whole verification / computation tool call.
@@ -235,7 +276,7 @@ function targetFor(
 export function isMissingPreviousResponseError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const message = String((err as { message?: unknown }).message ?? "");
-  // claudeClient / hfClient emulation cache miss.
+  // claudeClient / hfClient / geminiClient emulation cache miss.
   if (message.includes("unknown previousResponseId")) return true;
   // OpenAI Responses API: 400/404 "Previous response with id '...' not found".
   const status = (err as { status?: number }).status;

@@ -8,7 +8,7 @@ To run Solver Agent on your own machine, follow the step-by-step [Installation](
 
 ![Solver Agent architecture: the researcher talks to the Main solver, which delegates to specialized sub-agents (symbolic, numerical, Calabi-Yau analysis, reference lookup) that run code in a sandbox; every step is appended to a persistent ledger which the step and full-solution verification agents review.](diagram.png)
 
-The project is a TypeScript monorepo: an Express + MongoDB backend that orchestrates the agents over the OpenAI Responses API (with Anthropic Claude and HuggingFace back-ends behind the same facade), and an Angular frontend that streams the ledger to the browser in real time.
+The project is a TypeScript monorepo: an Express + MongoDB backend that orchestrates the agents over the OpenAI Responses API (with Anthropic Claude, Google Gemini and HuggingFace back-ends behind the same facade), and an Angular frontend that streams the ledger to the browser in real time.
 
 ## Table of contents
 
@@ -115,7 +115,7 @@ Computation sub-agents run their scripts in a **Sandbox**: a one-shot Python sub
 
 Every sub-agent is **stateless**: the Main solver must phrase each task as a self-contained natural-language instruction (the relevant expressions, assumptions and the exact operation), and the sub-agent has no access to the ledger beyond the context passed to it from the entries listed in `dependsOn`. This keeps the sub-agents from inheriting the solver's biases and makes verification genuinely independent.
 
-All agent loops go through one provider-agnostic facade, `backend/src/agents/llmClient.ts`, which resolves the `(reasoningSpeed, reasoningRole)` pair to a provider / model / effort triple and dispatches to the OpenAI, Claude or HuggingFace client (see [Changing model providers and models](#changing-model-providers-and-models)).
+All agent loops go through one provider-agnostic facade, `backend/src/agents/llmClient.ts`, which resolves the `(reasoningSpeed, reasoningRole)` pair to a provider / model / effort triple and dispatches to the OpenAI, Claude, Gemini or HuggingFace client (see [Changing model providers and models](#changing-model-providers-and-models)).
 
 ### The ledger
 
@@ -184,7 +184,7 @@ Both settings are stored on the conversation document and honoured when a run is
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Backend runtime        | Node.js ≥ 20, TypeScript 5, Express 5, `tsx` for dev / `tsc` for builds                                                                                           |
 | Persistence            | MongoDB 7 driver (conversations, messages, ledgers, ledger entries, generated files, side-talk, usage records)                                                    |
-| LLM providers          | OpenAI Responses API (`openai` SDK), Anthropic Messages API (`@anthropic-ai/sdk`), HuggingFace Inference Router (OpenAI Chat Completions dialect)                 |
+| LLM providers          | OpenAI Responses API (`openai` SDK), Anthropic Messages API (`@anthropic-ai/sdk`), Google Gemini API (`@google/genai`), HuggingFace Inference Router (OpenAI Chat Completions dialect) |
 | Validation and logging | `zod` for env and request schemas, `pino` / `pino-http` structured logs                                                                                           |
 | Session export         | `marked` (Markdown lexer / renderer), `katex` and `prismjs` (server-side math and code rendering for `report.html`), `archiver` (zip streaming)                     |
 | Sandbox                | One-shot Python ≥ 3.11 subprocess (`child_process.spawn`, POSIX rlimits) with `sympy`, `numpy`, `scipy`, `matplotlib`; optional `g++`, `wolframscript`, `cytools` |
@@ -220,7 +220,7 @@ You will install five things, each explained in its own step below:
 | **Node.js** (version 20 or newer) and **npm** | Runs the backend and builds the frontend. npm comes with Node. Angular is installed automatically by npm in step 10; no separate install.             | 2    |
 | **Python** (version 3.11 or newer)            | The isolated environment in which the agents execute their sympy / numpy code.                                                                        | 3    |
 | **MongoDB**                                   | The database that holds conversations, ledgers and generated files. Either a free cloud database (recommended for a first install) or a local server. | 4    |
-| An **API key** from a language-model provider | The agents are language models hosted by OpenAI (default), Anthropic or HuggingFace; the key lets the backend call them, billed to your account.      | 5    |
+| An **API key** from a language-model provider | The agents are language models hosted by OpenAI (default), Anthropic, Google or HuggingFace; the key lets the backend call them, billed to your account. | 5    |
 
 
 Optional extras (a C++ compiler, the Wolfram Engine, CYTools) are covered in [step 9](#9-optional-computation-engines) and can be added at any later time.
@@ -355,6 +355,8 @@ An API key is a long secret string. Treat it like a password: never paste it int
 
 **Anthropic (optional):** create an account at [console.anthropic.com](https://console.anthropic.com/), add credits under *Plans & Billing*, then create a key under *API Keys*. Keys start with `sk-ant-`.
 
+**Google Gemini (optional):** open [Google AI Studio](https://aistudio.google.com/), sign in with a Google account, click *Get API key* and create a key in a Google Cloud project. Free-tier keys work for trying the app but have low rate limits and are not available for the Pro models; enable billing on the project (*Set up billing* in the API-keys page) for the paid tier. Keys start with `AIza`.
+
 **HuggingFace (optional, for open-weight models through the Inference Router):** create an account at [huggingface.co](https://huggingface.co/), go to *Settings → Access Tokens* ([huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)), create a token with *Make calls to Inference Providers* permission, and add a payment method under *Settings → Billing*. Tokens start with `hf_`.
 
 **What does it cost?** Every model call is priced in the usage meter inside the app. With the default `high` configuration, a short textbook-style problem typically costs a few tens of cents; a long research-level derivation with many verification passes can reach several dollars. `fast` mode is several times cheaper. Set a budget limit at the provider and watch the meter during your first runs.
@@ -441,6 +443,7 @@ MONGODB_DB=solver-agent
 OPENAI_API_KEY=sk-...
 # ANTHROPIC_API_KEY=sk-ant-...
 # HUGGINGFACE_API_KEY=hf_...
+# GEMINI_API_KEY=AIza...
 
 # --- sandbox ----------------------------------------------------------------
 # change me: the absolute path printed at the end of step 7.
@@ -578,6 +581,7 @@ All variables are read from `backend/.env` and validated in `backend/src/config/
 | `OPENAI_API_KEY`            | `""`                     | OpenAI key. Required for any role routed to `openai`, which by default is all of them and always the Reference Seeker and side-talk web search. |
 | `ANTHROPIC_API_KEY`         | `""`                     | Anthropic key, used by roles routed to `claude`.                                                                                                |
 | `HUGGINGFACE_API_KEY`       | `""`                     | HuggingFace token, used by roles routed to `huggingface` (Inference Router, `https://router.huggingface.co/v1`).                                |
+| `GEMINI_API_KEY`            | `""`                     | Google AI Studio key, used by roles routed to `gemini` (Gemini Developer API via `@google/genai`).                                              |
 | `MODEL_PRICING_JSON`        | *(unset)*                | JSON object merged over the built-in pricing table, e.g. `{"gpt-5.6-sol":{"input":4,"cachedInput":0.4,"output":20}}` in USD per million tokens. |
 | `PYTHON_BIN`                | `python3`                | Interpreter used by the sandbox. Point it at your venv or conda env.                                                                            |
 | `PYTHON_TIMEOUT_MS`         | `60000`                  | Wall-clock cap per `run_python` call for the symbolic and CY sub-agents (halved in `fast` mode).                                                |
@@ -785,7 +789,7 @@ Read these files in this order and the rest will make sense.
 
 `src/agents/llmClient.ts`: the provider-agnostic facade. It owns the `PROVIDER_MATRIX`, `MODEL_MATRIX` and `EFFORT_MATRIX`, resolves `(reasoningSpeed, reasoningRole)` to a target, forwards `createResponse` to the right client and records usage. It also exports two generic loops, `runManualAgentLoop` (caller keeps the full input array) and `runPreviousResponseLoop` (server keeps the state via `previous_response_id`).
 
-`src/agents/openaiClient.ts`**,** `claudeClient.ts`**,** `hfClient.ts`: the three back-ends. Every client speaks the *OpenAI Responses shape* on both sides: it accepts `ResponseInputItem[]` and returns a `Response` whose `output` contains `reasoning`, `function_call` and `message` items. The Claude and HuggingFace clients translate to and from their native APIs (Anthropic Messages, Chat Completions) internally, including emulating `previous_response_id` with an in-process cache. The rest of the codebase never knows which vendor it is talking to.
+`src/agents/openaiClient.ts`**,** `claudeClient.ts`**,** `geminiClient.ts`**,** `hfClient.ts`: the four back-ends. Every client speaks the *OpenAI Responses shape* on both sides: it accepts `ResponseInputItem[]` and returns a `Response` whose `output` contains `reasoning`, `function_call` and `message` items. The Claude, Gemini and HuggingFace clients translate to and from their native APIs (Anthropic Messages, Gemini `generateContent`, Chat Completions) internally, including emulating `previous_response_id` with an in-process cache. The rest of the codebase never knows which vendor it is talking to.
 
 `src/agents/toolSchemas.ts`: every function tool the models can call, as strict JSON Schemas, plus the structured-output schemas sub-agents must reply with (`computation_result`, `step_verification_verdict`, `full_verification_verdict`, `reference_seeker_result`). `buildMainSolverTools(flags)` and `buildVerificationSubAgentTools(flags)` assemble the per-conversation tool lists.
 
@@ -1073,7 +1077,7 @@ Model routing lives in one file, `backend/src/agents/llmClient.ts`, and nothing 
 
 ```ts
 // backend/src/agents/llmClient.ts (abridged)
-export type LlmProvider = "openai" | "claude" | "huggingface";
+export type LlmProvider = "openai" | "claude" | "huggingface" | "gemini";
 
 const PROVIDER_MATRIX: Matrix<LlmProvider> = {
   high: { main_solver: "openai", full_verification: "openai", step_verification: "openai",
@@ -1093,11 +1097,11 @@ const EFFORT_MATRIX: Matrix<ReasoningEffort> = {
 };
 ```
 
-- `PROVIDER_MATRIX` picks the client (`openaiClient`, `claudeClient`, `hfClient`).
-- `MODEL_MATRIX` is the model id passed verbatim to that client. HuggingFace ids may carry a `:provider` routing suffix such as `deepseek-ai/DeepSeek-V4-Pro-0813:together`.
-- `EFFORT_MATRIX` uses the OpenAI reasoning-effort axis (`minimal`, `low`, `medium`, `high`, `xhigh`) plus `max`. OpenAI receives it as `reasoning.effort` (`max` is mapped to `xhigh`); Claude maps it to adaptive-thinking levels; HuggingFace passes it through for models that accept `reasoning_effort` (z.ai GLM exposes `max`).
+- `PROVIDER_MATRIX` picks the client (`openaiClient`, `claudeClient`, `geminiClient`, `hfClient`).
+- `MODEL_MATRIX` is the model id passed verbatim to that client. HuggingFace ids may carry a `:provider` routing suffix such as `deepseek-ai/DeepSeek-V4-Pro-0813:together`; Gemini ids are the bare API names such as `gemini-3.1-pro-preview` or `gemini-3.8-flash`.
+- `EFFORT_MATRIX` uses the OpenAI reasoning-effort axis (`minimal`, `low`, `medium`, `high`, `xhigh`) plus `max`. OpenAI receives it as `reasoning.effort` (`max` is mapped to `xhigh`); Claude maps it to adaptive-thinking levels; Gemini maps it to `thinking_level` (`minimal`/`low` → `LOW`, `medium` → `MEDIUM`, `high`/`xhigh`/`max` → `HIGH`); HuggingFace passes it through for models that accept `reasoning_effort` (z.ai GLM exposes `max`).
 
-`providerFor`, `modelFor` and `effortFor` are the only readers, and `createResponse` injects the resolved model so call sites never mention one. The file already contains commented-out alternative rows for an all-Claude `high` configuration and an all-HuggingFace (DeepSeek / GLM via Together) `fast` configuration that you can uncomment as a starting point.
+`providerFor`, `modelFor` and `effortFor` are the only readers, and `createResponse` injects the resolved model so call sites never mention one. The file already contains commented-out alternative rows for an all-Claude `high` configuration, a Gemini `high` configuration (3.1 Pro solving and verifying, 3.8 Flash for the cheaper roles), an all-HuggingFace (DeepSeek / GLM via Together) `fast` configuration and an all-Gemini-3.8-Flash `fast` configuration that you can uncomment as a starting point.
 
 ### Switching a role to another provider or model
 
@@ -1128,6 +1132,8 @@ Because the matrices are per role, you can mix vendors freely: run the Main solv
 
 **Example: make** `fast` **mode fully open-weight via HuggingFace.** Set `HUGGINGFACE_API_KEY`, then uncomment the HuggingFace block in the `fast` rows of `PROVIDER_MATRIX` and `MODEL_MATRIX` (DeepSeek V4 Pro for solving, GLM-5.2 for cross-checking, V4 Flash for cheap computation and narration) and comment out the OpenAI lines. Leave `reference_seeker` and `side_talk` on OpenAI; see the caveats.
 
+**Example: run everything except web search on Gemini.** Set `GEMINI_API_KEY`, then uncomment the Gemini blocks in `PROVIDER_MATRIX` and `MODEL_MATRIX` for the speed you want (`high`: `gemini-3.1-pro-preview` for the main solver, full verification and the CY analyst, `gemini-3.8-flash` for step verification, computation and narration; `fast`: `gemini-3.8-flash` everywhere) and comment out the OpenAI lines. `reference_seeker` and `side_talk` stay on OpenAI because they depend on OpenAI's hosted web search, so `OPENAI_API_KEY` is still needed for those two roles (or disable the Reference Seeker in the conversation's additional tools and leave the side-talk web-search switch off). Structured output combined with function calling is a Gemini 3 feature; stick to the Gemini 3 models above for the sub-agent roles.
+
 **Changing only the effort.** To make verification cheaper without changing models, lower `EFFORT_MATRIX.high.step_verification` from `"high"` to `"medium"`. Effort is where most of the cost lives on reasoning models, since reasoning tokens are billed as output.
 
 After any change, run the offline invariant check and the unit tests:
@@ -1150,7 +1156,7 @@ Any model id your provider accepts can go straight into `MODEL_MATRIX`; there is
 "claude-opus-5-1": { input: 5, cachedInput: 0.5, output: 25 },
 ```
 
-`pricingFor` tolerates dated snapshot suffixes (`gpt-5.6-sol-2026-07-09` resolves to `gpt-5.6-sol`) and HuggingFace routing suffixes (`zai-org/GLM-5.2:together` falls back to `zai-org/GLM-5.2`), so you rarely need one entry per variant.
+`pricingFor` tolerates dated snapshot suffixes (`gpt-5.6-sol-2026-07-09` resolves to `gpt-5.6-sol`), HuggingFace routing suffixes (`zai-org/GLM-5.2:together` falls back to `zai-org/GLM-5.2`) and the Gemini `models/` resource prefix, so you rarely need one entry per variant. The bundled Gemini rates are the paid-tier prices for prompts up to 200k tokens (Gemini 3.1 Pro bills roughly double above that, which is not modeled) and the 3.6–3.8 Flash rates are promotional through 2026-12-31; override them with `MODEL_PRICING_JSON` when they change.
 
 If you would rather not edit code when list prices change, override or extend the table at runtime with `MODEL_PRICING_JSON` in `.env`:
 
@@ -1162,28 +1168,31 @@ Malformed entries are skipped with a warning; the rest of the table is unaffecte
 
 ### Adding a new provider
 
-A provider is a module that implements the same surface as `openaiClient.ts` while speaking the *OpenAI Responses shape* to the rest of the system. `claudeClient.ts` (Anthropic Messages API) and `hfClient.ts` (Chat Completions dialect) are the two existing translations; a new one for, say, Google Gemini, a local vLLM / Ollama server or Azure OpenAI follows the same recipe.
+A provider is a module that implements the same surface as `openaiClient.ts` while speaking the *OpenAI Responses shape* to the rest of the system. `claudeClient.ts` (Anthropic Messages API), `geminiClient.ts` (Gemini `generateContent`) and `hfClient.ts` (Chat Completions dialect) are the three existing translations; a new one for, say, a local vLLM / Ollama server or Azure OpenAI follows the same recipe.
 
 1. **Create** `backend/src/agents/<vendor>Client.ts` exporting:
   - `createResponse(options: CreateResponseOptions): Promise<Response>`. Translate `instructions`, `input` (`ResponseInputItem[]`: `message`, `reasoning`, `function_call`, `function_call_output`, and `input_image` content parts), `tools` (`FunctionTool[]` with strict JSON Schemas), `reasoning.effort`, `responseFormat` (JSON schema for the final message), `previousResponseId` / `store`, `parallelToolCalls`, `maxOutputTokens` and `signal` into the vendor's request. Translate the reply back into a `Response` whose `output` array contains `reasoning`, `function_call` (with a `call_id` the loop will echo back) and `message` items, and whose `usage` follows the OpenAI shape (`input_tokens`, `input_tokens_details.cached_tokens`, `output_tokens`, `output_tokens_details.reasoning_tokens`) so cost tracking works unchanged.
   - `runManualAgentLoop` and `runPreviousResponseLoop`: you can copy the bodies from `claudeClient.ts`; they are generic over `createResponse`.
-  - If the vendor has no server-side conversation state, emulate `previous_response_id` with an in-process cache keyed by the synthetic ids you return, as `hfClient.ts` does, and make a cache miss throw an error whose message contains `unknown previousResponseId` so `isMissingPreviousResponseError` treats it as recoverable.
+  - If the vendor has no server-side conversation state, emulate `previous_response_id` with an in-process cache keyed by the synthetic ids you return, as `hfClient.ts` and `geminiClient.ts` do, and make a cache miss throw an error whose message contains `unknown previousResponseId` so `isMissingPreviousResponseError` treats it as recoverable.
+  - If the vendor needs opaque per-part data echoed back (Anthropic thinking signatures, Gemini thought signatures), stash it on the output items you emit under a private `__vendorX` key, as the existing clients do; the agent loops append those items back verbatim, so the data survives the round-trip.
   - Retry on transient HTTP statuses (`408 409 425 429 5xx`) with backoff, and rethrow abort errors untouched (`isAbort`).
-2. **Register it in** `llmClient.ts`: extend `LlmProvider` with the new literal and add the module to `CLIENT_BY_PROVIDER`. If the vendor's state emulation is in-process, add its provider to the `useServerState` check in `symbolicAgent.ts` so sub-agents carry the input array themselves (look for `providerFor(...) === "openai"`).
+2. **Register it in** `llmClient.ts`: extend `LlmProvider` with the new literal and add the module to `CLIENT_BY_PROVIDER`. The sub-agents already use manual state for every provider other than `openai` (`useServerState` in `symbolicAgent.ts` and `stepVerificationAgent.ts` checks `providerFor(...) === "openai"`), so an in-process state emulation needs no further change.
 3. **Add the credential** to `EnvSchema` in `config/env.ts` (default `""`) and to the "at least one key" check at the bottom of that file.
 4. **Price the models** in `config/pricing.ts`.
-5. **Test the translation** by adding a suite to `src/agents/__tests__/clientAudit.test.ts`. The existing suites monkey-patch each SDK's transport to capture the exact wire request for a realistic multi-turn solver input and assert on it; copy the Claude or HuggingFace suite and adapt the expectations. This is how the current back-ends were validated without spending tokens.
+5. **Test the translation** by adding a suite to `src/agents/__tests__/clientAudit.test.ts`. The existing suites monkey-patch each SDK's transport to capture the exact wire request for a realistic multi-turn solver input and assert on it; copy the Claude, Gemini or HuggingFace suite and adapt the expectations. This is how the current back-ends were validated without spending tokens. Add the transport to the no-live-network guards at the top of that file and of `subAgentLoop.test.ts`, and consider an opt-in live smoke script like `debug/geminiLiveSmoke.ts`.
 
 The whole rest of the codebase, agents, tools, orchestration, usage tracking and the frontend, needs no change.
 
 ### Provider caveats
 
-- **Hosted web search is OpenAI-only.** The Reference Seeker and the side-talk "web search" switch rely on OpenAI's server-side `web_search` tool. The Claude and HuggingFace clients silently drop the `webSearch` flag (the audit script makes this visible), so `reference_seeker` and `side_talk` must stay on `openai` unless you implement a search tool for the other providers. `debug/agentLoopAudit.ts` asserts this invariant.
-- **State handling differs.** OpenAI keeps chained sub-agent turns server-side via `previous_response_id`. Claude and HuggingFace only emulate it with an evictable in-process cache, so for those providers the computation and verification sub-agents automatically switch to manual state (the full history is re-sent every turn). This is correct but uses more input tokens; prompt caching (`promptCacheKey`) mitigates the cost on OpenAI, and Anthropic's cache reads are priced in `pricing.ts`.
-- **Images.** `fetch_artifact_file` delivers pictures to the model as `input_image` parts. Text-only chat models on HuggingFace (for example DeepSeek) may reject them; pick a vision-capable model for roles that inspect plots (`main_solver`, the verifiers, `side_talk`, `proof_narrator`) or accept that the model will only see the file's metadata.
-- **Structured output.** Sub-agents end with a strict JSON-schema message. All three clients support it, but smaller open-weight models sometimes wrap the JSON in prose; `parseStructuredOutput` then returns `status: "error"` and the solver retries. If you see many `parse_error` results with a given model, raise its effort or choose a stronger one for that role.
+- **Hosted web search is OpenAI-only.** The Reference Seeker and the side-talk "web search" switch rely on OpenAI's server-side `web_search` tool. The Claude, Gemini and HuggingFace clients silently drop the `webSearch` flag (the audit script makes this visible), so `reference_seeker` and `side_talk` must stay on `openai` unless you implement a search tool for the other providers (Gemini's `googleSearch` grounding tool would be the natural candidate). `debug/agentLoopAudit.ts` asserts this invariant.
+- **State handling differs.** OpenAI keeps chained sub-agent turns server-side via `previous_response_id`. Claude, Gemini and HuggingFace only emulate it with an evictable in-process cache, so for those providers the computation and verification sub-agents automatically switch to manual state (the full history is re-sent every turn). This is correct but uses more input tokens; prompt caching (`promptCacheKey`) mitigates the cost on OpenAI, Anthropic's cache reads are priced in `pricing.ts`, and Gemini's implicit caching shows up as `cached_tokens` automatically.
+- **Gemini thought signatures.** Gemini 3 requires the opaque `thoughtSignature` returned on a function call to be echoed back on that exact part, or the next request fails with a 400. `geminiClient.ts` stores the signature on the `function_call` item (`__geminiThoughtSignature`), regroups parallel calls into one `model` content and places all `functionResponse` parts first in the following `user` content, exactly as the API demands. A call that reaches Gemini without a signature (history produced by another provider) is sent with the documented `skip_thought_signature_validator` sentinel and logged. Thought *summaries* are surfaced as `reasoning` items but not re-sent unless signed, which keeps input tokens down.
+- **Images.** `fetch_artifact_file` delivers pictures to the model as `input_image` parts. Text-only chat models on HuggingFace (for example DeepSeek) may reject them; pick a vision-capable model for roles that inspect plots (`main_solver`, the verifiers, `side_talk`, `proof_narrator`) or accept that the model will only see the file's metadata. Gemini receives `data:` URLs as `inlineData` (all Gemini 3 models are multimodal).
+- **Structured output.** Sub-agents end with a strict JSON-schema message. All four clients support it, but smaller open-weight models sometimes wrap the JSON in prose; `parseStructuredOutput` then returns `status: "error"` and the solver retries. If you see many `parse_error` results with a given model, raise its effort or choose a stronger one for that role. On Gemini, a JSON schema *together with* function declarations is a Gemini 3 feature; if an older Gemini model rejects the combination, the client retries the turn once without the schema (logged as a warning) and relies on the lenient parser.
+- **Gemini has no "disable parallel tool calls" switch.** `parallelToolCalls: false` is ignored; every loop already dispatches N calls per turn, so this only affects how often the model batches them.
 - **Reasoning-only replies.** A response with neither a function call nor a message (truncated or reasoning-only) yields `finalMessage === null`; every loop handles it by treating the turn as empty and continuing, up to the turn budget. Very small `maxOutputTokens` values make this frequent.
-- **Pricing drift.** The bundled prices are list prices as of August 2026. Override them with `MODEL_PRICING_JSON` rather than trusting the defaults forever.
+- **Pricing drift.** The bundled prices are list prices as of August 2026 (September 2026 for Gemini). Override them with `MODEL_PRICING_JSON` rather than trusting the defaults forever.
 
 
 
@@ -1234,7 +1243,7 @@ When you change a prompt, evaluate on a handful of problems you know well and re
 
 **Tests.** The three suites in `backend/src/agents/__tests__/` are the safety net for the two areas where bugs are expensive, and `backend/src/export/__tests__/export.test.ts` checks the session export (HTML and LaTeX renderers, the Markdown-to-HTML pipeline's sanitising of model-written HTML and figure rewriting, the Markdown-to-LaTeX converter's escaping, code shielding and math passthrough including nested delimiters, the zip layout) against a synthetic ledger fixture:
 
-- `clientAudit.test.ts` monkey-patches the OpenAI, Anthropic and HuggingFace SDK transports to capture the exact wire request built from a realistic solver input (instructions, ledger context, reasoning items, tool calls and outputs, images) across single calls and multi-turn loops, and checks that usage is mapped back correctly for cost tracking.
+- `clientAudit.test.ts` monkey-patches the OpenAI, Anthropic, Gemini and HuggingFace SDK transports to capture the exact wire request built from a realistic solver input (instructions, ledger context, reasoning items, tool calls and outputs, images) across single calls and multi-turn loops, and checks that usage is mapped back correctly for cost tracking.
 - `computationGuard.test.ts` covers the in-code guard rails in `mainSolverAgent.ts`: pending-computation blocking, the verification gate, their re-seeding from a persisted ledger, and the parse helpers.
 - `subAgentLoop.test.ts` covers the sub-agent loops' state strategy per provider and the recovery from a lost `previous_response_id` chain.
 
@@ -1256,7 +1265,9 @@ Tests never hit the network. A test that accidentally routes to a real provider 
 
 `No pricing configured for model; cost recorded as 0`**.** Add the model to `config/pricing.ts` or `MODEL_PRICING_JSON`. Harmless otherwise.
 
-`Previous response with id ... not found` **in the logs.** OpenAI expired or lost a stored response mid sub-agent, or the Claude / HuggingFace emulation cache evicted it. The sub-agent restarts once from its initial input automatically; if it recurs constantly on a non-OpenAI provider, that provider should be using manual state (check `useServerState` in `symbolicAgent.ts`).
+`Previous response with id ... not found` **in the logs.** OpenAI expired or lost a stored response mid sub-agent, or the Claude / Gemini / HuggingFace emulation cache evicted it. The sub-agent restarts once from its initial input automatically; if it recurs constantly on a non-OpenAI provider, that provider should be using manual state (check `useServerState` in `symbolicAgent.ts`).
+
+`400 ... thought_signature` **or** `function call ... missing signature` **from Gemini.** A `function_call` reached `geminiClient.ts` without its `thoughtSignature`, usually because the history was produced by another provider (you switched `PROVIDER_MATRIX` mid-conversation) or was persisted before the switch. The client already sends the skip-validation sentinel for such calls; if Gemini still rejects the request, start a new conversation on the new provider.
 
 **Solver stops with a prose message and the conversation shows** `paused`**.** The model ended its turn without calling `submit_final_answer`. Click **Resume**, or send a follow-up such as "continue and submit the verified answer". If it happens often with a particular model, strengthen the `<persistence>` section of `MAIN_SOLVER_PROMPT` or pick a stronger model for `main_solver`.
 
@@ -1306,4 +1317,4 @@ Solver Agent is free software, released under the [GNU Affero General Public Lic
 
 Copyright (C) 2026 Eliott Morgensztern.
 
-Third-party components keep their own licenses: the Wolfram Engine is free for development use but licensed separately for other uses, CYTools is distributed under the GPL, and use of the OpenAI, Anthropic and HuggingFace APIs is governed by their respective terms. `backend/docs/cytools-documentation.md` is a copy of the CYTools documentation and remains the property of its authors.
+Third-party components keep their own licenses: the Wolfram Engine is free for development use but licensed separately for other uses, CYTools is distributed under the GPL, and use of the OpenAI, Anthropic, Google Gemini and HuggingFace APIs is governed by their respective terms. `backend/docs/cytools-documentation.md` is a copy of the CYTools documentation and remains the property of its authors.

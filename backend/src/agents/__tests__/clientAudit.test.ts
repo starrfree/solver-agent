@@ -1,8 +1,8 @@
 /**
  * Client audit suite.
  *
- * Goal: prove (with captured runtime payloads) that the Claude and HuggingFace
- * clients correctly translate our provider-agnostic Responses-shaped input
+ * Goal: prove (with captured runtime payloads) that the Claude, HuggingFace and
+ * Gemini clients correctly translate our provider-agnostic Responses-shaped input
  * (system/developer instructions, ledger context, conversation, reasoning,
  * tool calls + outputs) into the wire request each provider actually receives,
  * across single calls AND multi-turn agent loops, and that the response usage
@@ -20,6 +20,8 @@ import type { ResponseInputItem } from "openai/resources/responses/responses";
 
 import { anthropic } from "../claudeClient";
 import * as claudeClient from "../claudeClient";
+import { gemini } from "../geminiClient";
+import * as geminiClient from "../geminiClient";
 import { hf } from "../hfClient";
 import * as hfClient from "../hfClient";
 import * as llmClient from "../llmClient";
@@ -80,6 +82,11 @@ function buildSolverInput(): ResponseInputItem[] {
 (hf.chat.completions as any).create = async () => {
   throw new Error(
     "Test attempted a LIVE HuggingFace call — install an HF mock (installHfMock) for this code path.",
+  );
+};
+(gemini.models as any).generateContent = async () => {
+  throw new Error(
+    "Test attempted a LIVE Gemini call — install a Gemini mock (installGeminiMock) for this code path.",
   );
 };
 
@@ -151,6 +158,34 @@ function installHfMock(script: any[]): HfHarness {
     bodies,
     restore: () => {
       (hf.chat.completions as any).create = original;
+    },
+  };
+}
+
+interface GeminiHarness {
+  /** Captured `generateContent` params: `{ model, contents, config }`. */
+  bodies: any[];
+  restore: () => void;
+}
+
+/** Patch `gemini.models.generateContent` to capture each request and return
+ * the next scripted `GenerateContentResponse` (or throw a scripted error). */
+function installGeminiMock(script: any[]): GeminiHarness {
+  const bodies: any[] = [];
+  const queue = [...script];
+  const original = (gemini.models as any).generateContent;
+  (gemini.models as any).generateContent = async (params: any) => {
+    // Deep-copy so later in-place mutations by the client (sanitizer, cache)
+    // cannot retroactively alter what we assert was sent on the wire.
+    bodies.push(JSON.parse(JSON.stringify(params)));
+    const next = queue.shift();
+    if (next instanceof Error) throw next;
+    return next;
+  };
+  return {
+    bodies,
+    restore: () => {
+      (gemini.models as any).generateContent = original;
     },
   };
 }
@@ -247,6 +282,40 @@ function hfCompletion(opts: {
         total_tokens: 150,
       },
   };
+}
+
+function geminiResponse(opts: {
+  id?: string;
+  parts: any[];
+  usage?: any;
+  finishReason?: string;
+  model?: string;
+}): any {
+  return {
+    responseId: opts.id ?? "gresp_test",
+    modelVersion: opts.model ?? "gemini-3.8-flash",
+    candidates: [
+      {
+        index: 0,
+        finishReason: opts.finishReason ?? "STOP",
+        content: { role: "model", parts: opts.parts },
+      },
+    ],
+    usageMetadata:
+      opts.usage ??
+      {
+        promptTokenCount: 100,
+        cachedContentTokenCount: 20,
+        candidatesTokenCount: 30,
+        thoughtsTokenCount: 20,
+        totalTokenCount: 150,
+      },
+  };
+}
+
+/** Flatten every part of every content in a captured Gemini request. */
+function geminiParts(body: any): any[] {
+  return (body.contents as any[]).flatMap((c: any) => c.parts ?? []);
 }
 
 // =========================================================================
@@ -734,6 +803,437 @@ describe("HuggingFace client — request translation", () => {
 });
 
 // =========================================================================
+// GEMINI CLIENT
+// =========================================================================
+
+describe("Gemini client — request translation", () => {
+  let h: GeminiHarness;
+  afterEach(() => h?.restore());
+
+  test("systemInstruction = instructions + developer ledger context; user stays a user content", async () => {
+    h = installGeminiMock([geminiResponse({ parts: [{ text: "ok" }] })]);
+
+    await geminiClient.createResponse({
+      model: "gemini-3.8-flash",
+      instructions: MAIN_SOLVER_PROMPT,
+      input: buildSolverInput(),
+      tools: mainSolverTools,
+      toolChoice: "auto",
+      parallelToolCalls: false,
+      reasoning: { effort: "max" },
+      maxOutputTokens: 32_000,
+      promptCacheKey: "main-solver:conv-test-1",
+    });
+
+    const body = h.bodies[0];
+    assert.equal(body.model, "gemini-3.8-flash");
+    assert.equal(body.config.systemInstruction, `${MAIN_SOLVER_PROMPT}\n\n${LEDGER_CONTEXT}`);
+    assert.ok(body.config.systemInstruction.includes("[entry-1] type=assumption"));
+    assert.ok(body.config.systemInstruction.includes("[entry-2] type=derivation"));
+    // the user problem is a single user content with one text part
+    assert.equal(body.contents.length, 1);
+    assert.equal(body.contents[0].role, "user");
+    assert.deepEqual(body.contents[0].parts, [{ text: PROBLEM }]);
+  });
+
+  test("tools → functionDeclarations(parametersJsonSchema); thinking; maxOutputTokens; auto choice leaves toolConfig unset", async () => {
+    h = installGeminiMock([geminiResponse({ parts: [{ text: "ok" }] })]);
+
+    await geminiClient.createResponse({
+      model: "gemini-3.8-flash",
+      instructions: "sys",
+      input: PROBLEM,
+      tools: mainSolverTools,
+      toolChoice: "auto",
+      parallelToolCalls: false,
+      reasoning: { effort: "max" },
+      maxOutputTokens: 12_345,
+    });
+
+    const cfg = h.bodies[0].config;
+    assert.equal(cfg.tools.length, 1);
+    const decls = cfg.tools[0].functionDeclarations;
+    assert.equal(decls.length, mainSolverTools.length);
+    const ledgerTool = decls.find((d: any) => d.name === "ledger_append_entry");
+    assert.ok(ledgerTool, "ledger_append_entry declared");
+    assert.ok(typeof ledgerTool.description === "string" && ledgerTool.description.length > 0);
+    // strict JSON schema goes through parametersJsonSchema untouched
+    assert.equal(ledgerTool.parametersJsonSchema.type, "object");
+    assert.equal(ledgerTool.parametersJsonSchema.additionalProperties, false);
+    assert.equal(ledgerTool.parameters, undefined);
+    // `auto` → API default (AUTO / VALIDATED), so no toolConfig on the wire
+    assert.equal(cfg.toolConfig, undefined);
+    // thinking on, "max" collapses to HIGH
+    assert.deepEqual(cfg.thinkingConfig, { includeThoughts: true, thinkingLevel: "HIGH" });
+    assert.equal(cfg.maxOutputTokens, 12_345);
+    // no structured output requested → no JSON mime type
+    assert.equal(cfg.responseMimeType, undefined);
+    assert.equal(cfg.responseJsonSchema, undefined);
+  });
+
+  test("effort axis maps to thinking_level (minimal/none/low→LOW, medium→MEDIUM, high/xhigh/max→HIGH)", async () => {
+    for (const [effort, expected] of [
+      ["none", "LOW"],
+      ["minimal", "LOW"],
+      ["low", "LOW"],
+      ["medium", "MEDIUM"],
+      ["high", "HIGH"],
+      ["xhigh", "HIGH"],
+      ["max", "HIGH"],
+    ] as const) {
+      const hh = installGeminiMock([geminiResponse({ parts: [{ text: "ok" }] })]);
+      await geminiClient.createResponse({
+        model: "gemini-3.8-flash",
+        input: "hi",
+        reasoning: { effort: effort as any },
+      });
+      assert.equal(hh.bodies[0].config.thinkingConfig.thinkingLevel, expected, `effort ${effort}`);
+      hh.restore();
+    }
+    // no effort → model default level (thoughts still requested)
+    const hn = installGeminiMock([geminiResponse({ parts: [{ text: "ok" }] })]);
+    await geminiClient.createResponse({ model: "gemini-3.8-flash", input: "hi" });
+    assert.deepEqual(hn.bodies[0].config.thinkingConfig, { includeThoughts: true });
+    hn.restore();
+  });
+
+  test("tool_choice: required→ANY, none→NONE, named function→ANY+allowedFunctionNames", async () => {
+    for (const [choice, expected] of [
+      ["required", { mode: "ANY" }],
+      ["none", { mode: "NONE" }],
+      [
+        { type: "function", name: "symbolic_compute" },
+        { mode: "ANY", allowedFunctionNames: ["symbolic_compute"] },
+      ],
+    ] as const) {
+      const hh = installGeminiMock([geminiResponse({ parts: [{ text: "ok" }] })]);
+      await geminiClient.createResponse({
+        model: "gemini-3.8-flash",
+        input: "hi",
+        tools: mainSolverTools,
+        toolChoice: choice as any,
+      });
+      assert.deepEqual(hh.bodies[0].config.toolConfig, { functionCallingConfig: expected });
+      hh.restore();
+    }
+  });
+
+  test("responseFormat → responseMimeType application/json + responseJsonSchema (alongside tools)", async () => {
+    h = installGeminiMock([geminiResponse({ parts: [{ text: '{"verdict":"accepted"}' }] })]);
+
+    await geminiClient.createResponse({
+      model: "gemini-3.8-flash",
+      input: "verify this step",
+      tools: mainSolverTools,
+      responseFormat: stepVerificationSchema as any,
+    });
+
+    const cfg = h.bodies[0].config;
+    assert.equal(cfg.responseMimeType, "application/json");
+    assert.equal(cfg.responseJsonSchema.type, "object");
+    assert.deepEqual(cfg.responseJsonSchema, (stepVerificationSchema as any).schema);
+    assert.ok(Array.isArray(cfg.tools), "function declarations kept alongside the schema");
+  });
+
+  test("schema+tools rejection (400) retries once without the schema, keeping the tools", async () => {
+    const rejection = Object.assign(
+      new Error(
+        "got status: 400 Bad Request. Function calling with a response mime type: 'application/json' is unsupported",
+      ),
+      { status: 400 },
+    );
+    h = installGeminiMock([rejection, geminiResponse({ parts: [{ text: '{"verdict":"accepted"}' }] })]);
+
+    const res = await geminiClient.createResponse({
+      model: "gemini-2.5-flash",
+      input: "verify this step",
+      tools: mainSolverTools,
+      responseFormat: stepVerificationSchema as any,
+    });
+
+    assert.equal(h.bodies.length, 2);
+    assert.equal(h.bodies[0].config.responseJsonSchema.type, "object");
+    assert.equal(h.bodies[1].config.responseJsonSchema, undefined);
+    assert.equal(h.bodies[1].config.responseMimeType, undefined);
+    assert.ok(Array.isArray(h.bodies[1].config.tools));
+    assert.equal((res.output[0] as any).content[0].text, '{"verdict":"accepted"}');
+  });
+
+  test("function_call/function_call_output round-trip: signature echoed, id + name on functionResponse, parallel calls grouped", async () => {
+    h = installGeminiMock([geminiResponse({ parts: [{ text: "done" }] })]);
+
+    const input: ResponseInputItem[] = [
+      { type: "message", role: "user", content: PROBLEM } as ResponseInputItem,
+      // Two parallel calls as emitted by a prior Gemini turn: only the first is signed.
+      {
+        type: "function_call",
+        call_id: "fc-1",
+        name: "symbolic_compute",
+        arguments: '{"task":"a","dependsOn":[]}',
+        __geminiThoughtSignature: "SIG_A",
+      } as any,
+      { type: "function_call", call_id: "fc-2", name: "numerical_compute", arguments: '{"task":"b","dependsOn":[]}' } as any,
+      { type: "function_call_output", call_id: "fc-1", output: '{"ok":true,"result":"x"}' } as any,
+      { type: "function_call_output", call_id: "fc-2", output: "plain text result" } as any,
+    ];
+
+    await geminiClient.createResponse({ model: "gemini-3.8-flash", input, tools: mainSolverTools });
+
+    const contents = h.bodies[0].contents;
+    // user(problem), model(FC1+sig, FC2), user(FR1, FR2)
+    assert.deepEqual(contents.map((c: any) => c.role), ["user", "model", "user"]);
+    const model = contents[1];
+    assert.equal(model.parts.length, 2);
+    assert.deepEqual(model.parts[0].functionCall, {
+      name: "symbolic_compute",
+      args: { task: "a", dependsOn: [] },
+      id: "fc-1",
+    });
+    assert.equal(model.parts[0].thoughtSignature, "SIG_A", "real signature replayed on the first call");
+    assert.equal(model.parts[1].functionCall.id, "fc-2");
+    assert.equal(model.parts[1].thoughtSignature, undefined, "second parallel call stays unsigned");
+    const responses = contents[2].parts;
+    assert.equal(responses.length, 2);
+    // JSON tool output is parsed under the documented `output` key; the name matches the call
+    assert.deepEqual(responses[0].functionResponse, {
+      name: "symbolic_compute",
+      id: "fc-1",
+      response: { output: { ok: true, result: "x" } },
+    });
+    assert.deepEqual(responses[1].functionResponse, {
+      name: "numerical_compute",
+      id: "fc-2",
+      response: { output: "plain text result" },
+    });
+  });
+
+  test("foreign (unsigned) function_call gets the documented skip-validation sentinel", async () => {
+    h = installGeminiMock([geminiResponse({ parts: [{ text: "done" }] })]);
+
+    const input: ResponseInputItem[] = [
+      { type: "message", role: "user", content: PROBLEM } as ResponseInputItem,
+      { type: "function_call", call_id: "call_openai_1", name: "ledger_append_entry", arguments: "{}" } as any,
+      { type: "function_call_output", call_id: "call_openai_1", output: '{"ok":true}' } as any,
+    ];
+
+    await geminiClient.createResponse({ model: "gemini-3.8-flash", input, tools: mainSolverTools });
+
+    const fc = geminiParts(h.bodies[0]).find((p: any) => p.functionCall);
+    assert.equal(fc.thoughtSignature, "skip_thought_signature_validator");
+  });
+
+  test("sanitizer synthesizes a functionResponse for an orphan functionCall", async () => {
+    h = installGeminiMock([geminiResponse({ parts: [{ text: "done" }] })]);
+
+    const input: ResponseInputItem[] = [
+      { type: "message", role: "user", content: PROBLEM } as ResponseInputItem,
+      { type: "function_call", call_id: "orphan_1", name: "symbolic_compute", arguments: "{}", __geminiThoughtSignature: "S" } as any,
+      // NO matching function_call_output → must be synthesized
+      { type: "message", role: "user", content: "carry on" } as ResponseInputItem,
+    ];
+
+    await geminiClient.createResponse({ model: "gemini-3.8-flash", input, tools: mainSolverTools });
+
+    const contents = h.bodies[0].contents;
+    assert.deepEqual(contents.map((c: any) => c.role), ["user", "model", "user"]);
+    const after = contents[2].parts;
+    // synthetic error response FIRST, then the user's text
+    assert.equal(after[0].functionResponse.id, "orphan_1");
+    assert.equal(after[0].functionResponse.name, "symbolic_compute");
+    assert.ok(typeof after[0].functionResponse.response.error === "string");
+    assert.deepEqual(after[1], { text: "carry on" });
+  });
+
+  test("reasoning round-trips: signed thought replayed as a thought part, unsigned dropped", async () => {
+    h = installGeminiMock([geminiResponse({ parts: [{ text: "ok" }] })]);
+
+    const input: ResponseInputItem[] = [
+      { type: "message", role: "user", content: "solve it" } as ResponseInputItem,
+      {
+        id: "r1",
+        type: "reasoning",
+        summary: [{ type: "summary_text", text: "deep thought" }],
+        content: [{ type: "reasoning_text", text: "deep thought" }],
+        __geminiThoughtSignature: "sig-XYZ",
+      } as any,
+      {
+        id: "r2",
+        type: "reasoning",
+        summary: [{ type: "summary_text", text: "foreign" }],
+        content: [{ type: "reasoning_text", text: "foreign" }],
+      } as any,
+      { id: "m1", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "answer", annotations: [] }] } as any,
+    ];
+
+    await geminiClient.createResponse({ model: "gemini-3.8-flash", input });
+
+    const parts = geminiParts(h.bodies[0]);
+    const thoughts = parts.filter((p: any) => p.thought === true);
+    assert.equal(thoughts.length, 1, "only the signed thought is replayed");
+    assert.deepEqual(thoughts[0], { thought: true, text: "deep thought", thoughtSignature: "sig-XYZ" });
+    // signed thought and the assistant text share ONE model content
+    assert.deepEqual(h.bodies[0].contents.map((c: any) => c.role), ["user", "model"]);
+  });
+
+  test("fetch_artifact_file pattern: input_image → inlineData, merged after the functionResponse in one user content", async () => {
+    h = installGeminiMock([geminiResponse({ parts: [{ text: "ok" }] })]);
+
+    const input: ResponseInputItem[] = [
+      { type: "message", role: "user", content: "go" } as any,
+      { type: "function_call", call_id: "f1", name: "fetch_artifact_file", arguments: "{}", __geminiThoughtSignature: "sig" } as any,
+      { type: "function_call_output", call_id: "f1", output: '{"ok":true,"contentDelivered":"input_image"}' } as any,
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "Inline content of fetched file" },
+          { type: "input_image", image_url: "data:image/png;base64,AAAA", detail: "auto" },
+        ],
+      } as any,
+    ];
+
+    await geminiClient.createResponse({ model: "gemini-3.8-flash", input });
+
+    const contents = h.bodies[0].contents;
+    assert.deepEqual(contents.map((c: any) => c.role), ["user", "model", "user"]);
+    const last = contents[2].parts;
+    assert.ok(last[0].functionResponse, "functionResponse first");
+    assert.deepEqual(last[1], { text: "Inline content of fetched file" });
+    assert.deepEqual(last[2], { inlineData: { mimeType: "image/png", data: "AAAA" } });
+  });
+
+  test("response → Response: thought/functionCall/text parts, signatures stashed, usage folds thoughts into output", async () => {
+    h = installGeminiMock([
+      geminiResponse({
+        id: "gr1",
+        parts: [
+          { thought: true, text: "let me think" },
+          {
+            functionCall: { id: "fc-native", name: "symbolic_compute", args: { task: "x", dependsOn: [] } },
+            thoughtSignature: "SIG_FC",
+          },
+          { text: "working on it", thoughtSignature: "SIG_TXT" },
+        ],
+        usage: {
+          promptTokenCount: 80,
+          cachedContentTokenCount: 20,
+          candidatesTokenCount: 40,
+          thoughtsTokenCount: 15,
+          totalTokenCount: 135,
+        },
+      }),
+    ]);
+
+    const res = await geminiClient.createResponse({ model: "gemini-3.8-flash", input: "go" });
+
+    assert.equal(res.id, "gemini_gr1");
+    const types = res.output.map((o: any) => o.type);
+    assert.deepEqual(types, ["reasoning", "function_call", "message"]);
+    const reasoning = res.output[0] as any;
+    assert.equal(reasoning.summary[0].text, "let me think");
+    assert.equal(reasoning.__geminiThoughtSignature, undefined, "unsigned thought carries no signature");
+    const call = res.output[1] as any;
+    assert.equal(call.call_id, "fc-native");
+    assert.equal(call.name, "symbolic_compute");
+    assert.equal(call.arguments, '{"task":"x","dependsOn":[]}');
+    assert.equal(call.__geminiThoughtSignature, "SIG_FC");
+    const msg = res.output[2] as any;
+    assert.equal(msg.content[0].text, "working on it");
+    assert.equal(msg.__geminiThoughtSignature, "SIG_TXT");
+
+    const u: any = res.usage;
+    assert.equal(u.input_tokens, 80, "promptTokenCount already includes cached tokens");
+    assert.equal(u.input_tokens_details.cached_tokens, 20);
+    assert.equal(u.output_tokens, 55, "candidates + thoughts");
+    assert.equal(u.output_tokens_details.reasoning_tokens, 15);
+    assert.equal(u.total_tokens, 135);
+    assert.equal(res.model, "gemini-3.8-flash");
+  });
+
+  test("MAX_TOKENS finish marks the response incomplete", async () => {
+    h = installGeminiMock([geminiResponse({ parts: [{ text: "partial" }], finishReason: "MAX_TOKENS" })]);
+    const res = await geminiClient.createResponse({ model: "gemini-3.8-flash", input: "go" });
+    assert.equal(res.status, "incomplete");
+    assert.deepEqual(res.incomplete_details, { reason: "max_output_tokens" });
+  });
+
+  test("calls without a Gemini id get synthetic call_ids and are replayed without ids", async () => {
+    h = installGeminiMock([
+      geminiResponse({
+        id: "t1",
+        parts: [{ functionCall: { name: "symbolic_compute", args: {} }, thoughtSignature: "S1" }],
+      }),
+      geminiResponse({ id: "t2", parts: [{ text: "done" }] }),
+    ]);
+
+    const result = await geminiClient.runManualAgentLoop({
+      model: "gemini-3.8-flash",
+      input: [{ type: "message", role: "user", content: PROBLEM } as ResponseInputItem],
+      tools: mainSolverTools,
+      maxTurns: 3,
+      handlers: { onToolCall: async () => '{"ok":true}' },
+    });
+
+    const call = result.responses[0]!.output.find((o: any) => o.type === "function_call") as any;
+    assert.ok(call.call_id.startsWith("gemini_call_"), `synthetic id: ${call.call_id}`);
+    const t2parts = geminiParts(h.bodies[1]);
+    const fc = t2parts.find((p: any) => p.functionCall);
+    const fr = t2parts.find((p: any) => p.functionResponse);
+    assert.equal(fc.functionCall.id, undefined, "no fabricated id sent back on the call");
+    assert.equal(fc.thoughtSignature, "S1");
+    assert.equal(fr.functionResponse.id, undefined, "no fabricated id sent back on the response");
+    assert.equal(fr.functionResponse.name, "symbolic_compute", "name resolved from the call");
+    assert.ok(result.finalMessage);
+  });
+
+  test("previous_response_id: unknown id throws; known id replays the verbatim model content + names the outputs", async () => {
+    const hu = installGeminiMock([geminiResponse({ parts: [{ text: "x" }] })]);
+    await assert.rejects(
+      () => geminiClient.createResponse({ model: "gemini-3.8-flash", input: "hi", previousResponseId: "does-not-exist" }),
+      /unknown previousResponseId/,
+    );
+    hu.restore();
+
+    const h2 = installGeminiMock([
+      geminiResponse({
+        id: "first",
+        parts: [
+          { thought: true, text: "unsigned summary" },
+          { functionCall: { id: "fc-9", name: "run_python", args: { code: "1+1" } }, thoughtSignature: "SIG_9" },
+        ],
+      }),
+      geminiResponse({ id: "second", parts: [{ text: '{"status":"success"}' }] }),
+    ]);
+    const r1 = await geminiClient.createResponse({
+      model: "gemini-3.8-flash",
+      instructions: "SYSTEM PROMPT",
+      input: "first question",
+    });
+    // Sub-agent pattern: only the function_call_output travels on the next turn.
+    await geminiClient.createResponse({
+      model: "gemini-3.8-flash",
+      instructions: "SYSTEM PROMPT",
+      input: [{ type: "function_call_output", call_id: "fc-9", output: '{"stdout":"2"}' } as any],
+      previousResponseId: r1.id,
+    });
+
+    const second = h2.bodies[1];
+    // system instruction is a config field, present on every turn exactly once
+    assert.equal(second.config.systemInstruction, "SYSTEM PROMPT");
+    assert.deepEqual(second.contents.map((c: any) => c.role), ["user", "model", "user"]);
+    assert.deepEqual(second.contents[0].parts, [{ text: "first question" }]);
+    // the model content is Gemini's own parts (unsigned thought dropped, signed call kept verbatim)
+    assert.deepEqual(second.contents[1].parts, [
+      { functionCall: { id: "fc-9", name: "run_python", args: { code: "1+1" } }, thoughtSignature: "SIG_9" },
+    ]);
+    assert.deepEqual(second.contents[2].parts, [
+      { functionResponse: { name: "run_python", id: "fc-9", response: { output: { stdout: "2" } } } },
+    ]);
+    h2.restore();
+  });
+});
+
+// =========================================================================
 // TEST PROBLEM — multi-turn agent loops (end-to-end through each client)
 // =========================================================================
 
@@ -847,6 +1347,73 @@ describe("Test problem — multi-turn solver loop (manual state)", () => {
     );
     h.restore();
   });
+
+  test("Gemini: accumulates conversation/context/thought-signature/tool turns correctly", async () => {
+    // Turn 1: think + append a ledger entry. Turn 2: think + submit answer. Turn 3: final message.
+    const h = installGeminiMock([
+      geminiResponse({
+        id: "t1",
+        parts: [
+          { thought: true, text: "rational roots are 1,2,3" },
+          { functionCall: { id: "g_ledger", name: "ledger_append_entry", args: { type: "derivation" } }, thoughtSignature: "sig1" },
+        ],
+      }),
+      geminiResponse({
+        id: "t2",
+        parts: [
+          { thought: true, text: "verified all three roots" },
+          { functionCall: { id: "g_final", name: "submit_final_answer", args: { answer: "x=1,2,3" } }, thoughtSignature: "sig2" },
+        ],
+      }),
+      geminiResponse({ id: "t3", parts: [{ text: "The real solutions are x = 1, 2, 3.", thoughtSignature: "sig3" }] }),
+    ]);
+
+    const toolOutputs: Record<string, string> = {
+      ledger_append_entry: '{"ok":true,"entryId":"entry-3"}',
+      submit_final_answer: '{"ok":true,"status":"submitted"}',
+    };
+
+    const result = await geminiClient.runManualAgentLoop({
+      model: "gemini-3.8-flash",
+      instructions: MAIN_SOLVER_PROMPT,
+      input: buildSolverInput(),
+      tools: mainSolverTools,
+      reasoning: { effort: "max" },
+      maxTurns: 5,
+      handlers: { onToolCall: async (call) => toolOutputs[call.name] ?? "{}" },
+    });
+
+    assert.equal(h.bodies.length, 3);
+
+    // Turn 2 request: ledger context still in the system instruction; the
+    // turn-1 call carries its signature and is answered by a named response.
+    const t2 = h.bodies[1];
+    assert.ok(t2.config.systemInstruction.includes("[entry-1] type=assumption"));
+    assert.deepEqual(t2.contents.map((c: any) => c.role), ["user", "model", "user"]);
+    const t2parts = geminiParts(t2);
+    const fc1 = t2parts.find((p: any) => p.functionCall?.id === "g_ledger");
+    assert.equal(fc1.thoughtSignature, "sig1", "turn-1 signature replayed on the call part");
+    assert.ok(!t2parts.some((p: any) => p.thought), "unsigned thought summaries are not re-sent");
+    const fr1 = t2parts.find((p: any) => p.functionResponse?.id === "g_ledger");
+    assert.equal(fr1.functionResponse.name, "ledger_append_entry");
+    assert.deepEqual(fr1.functionResponse.response, { output: { ok: true, entryId: "entry-3" } });
+
+    // Turn 3 request: strictly alternating history with both steps present.
+    const t3 = h.bodies[2];
+    assert.deepEqual(t3.contents.map((c: any) => c.role), ["user", "model", "user", "model", "user"]);
+    const t3parts = geminiParts(t3);
+    assert.ok(t3parts.some((p: any) => p.functionCall?.id === "g_final" && p.thoughtSignature === "sig2"));
+    assert.ok(t3parts.some((p: any) => p.functionResponse?.id === "g_final"));
+
+    assert.ok(result.finalMessage, "loop produced a final message");
+    assert.equal(
+      result.finalMessage!.content.map((c: any) => c.text).join(""),
+      "The real solutions are x = 1, 2, 3.",
+    );
+    // the final text's signature is kept on the message item for any later replay
+    assert.equal((result.finalMessage as any).__geminiThoughtSignature, "sig3");
+    h.restore();
+  });
 });
 
 // =========================================================================
@@ -928,6 +1495,61 @@ describe("Usage ledger — attribution through llmClient.createResponse", () => 
     assert.ok(Math.abs(rec.costUsd - expected) < 1e-12, `cost ${rec.costUsd} ≈ ${expected}`);
     h.restore();
     restoreRouting();
+  });
+
+  test("Gemini-routed call records provider/model/tokens + cost from Gemini list pricing", async () => {
+    const model = "gemini-3.8-flash";
+    const restoreRouting = llmClient.overrideRoutingForTests("fast", "computation", {
+      provider: "gemini",
+      model,
+    });
+    assert.equal(llmClient.providerFor("fast", "computation"), "gemini");
+
+    const h = installGeminiMock([
+      geminiResponse({
+        parts: [{ text: "answer" }],
+        usage: {
+          promptTokenCount: 1000,
+          cachedContentTokenCount: 200,
+          candidatesTokenCount: 400,
+          thoughtsTokenCount: 100,
+          totalTokenCount: 1500,
+        },
+      }),
+    ]);
+
+    await runWithUsageContext({ conversationId: "conv-test-1", ledgerId: "ledger-1" }, async () => {
+      await llmClient.createResponse({
+        reasoningSpeed: "fast",
+        reasoningRole: "computation",
+        instructions: "sys",
+        input: PROBLEM,
+      });
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    assert.equal(h.bodies.length, 1, "exactly one (mocked) Gemini call");
+    assert.equal(h.bodies[0].model, model);
+    assert.equal(recorded.length, 1);
+    const rec = recorded[0];
+    assert.equal(rec.provider, "gemini");
+    assert.equal(rec.model, model);
+    assert.equal(rec.role, "computation");
+    assert.equal(rec.tokens.inputTokens, 1000);
+    assert.equal(rec.tokens.cachedInputTokens, 200);
+    assert.equal(rec.tokens.outputTokens, 500, "candidates + thoughts");
+    assert.equal(rec.tokens.reasoningTokens, 100);
+    assert.equal(rec.tokens.totalTokens, 1500);
+    // (800 uncached * 0.75 + 200 cached * 0.075 + 500 output * 3.75) / 1e6
+    const expected = (800 * 0.75 + 200 * 0.075 + 500 * 3.75) / 1_000_000;
+    assert.ok(Math.abs(rec.costUsd - expected) < 1e-12, `cost ${rec.costUsd} ≈ ${expected}`);
+    h.restore();
+    restoreRouting();
+  });
+
+  test("pricing resolves Gemini ids with the models/ resource prefix", () => {
+    assert.deepEqual(pricingFor("models/gemini-3.1-pro-preview"), pricingFor("gemini-3.1-pro-preview"));
+    assert.ok(pricingFor("gemini-3.1-pro-preview"));
   });
 
   test("pricing resolves HF model id via :together suffix fallback", () => {

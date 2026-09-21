@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
+    "@google/genai": "^2.23.0",
     "archiver": "^7.0.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

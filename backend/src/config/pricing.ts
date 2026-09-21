@@ -47,6 +47,17 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // V4 Pro preview endpoint (superseded by the 0813 release above).
   "deepseek-ai/DeepSeek-V4-Pro:together": { input: 1.74, cachedInput: 0.2, output: 3.48 },
   "zai-org/GLM-5.2:together": { input: 1.4, cachedInput: 0.26, output: 4.4 },
+  // Google Gemini Developer API paid-tier list pricing (ai.google.dev, Sep
+  // 2026), text tokens, prompts <= 200k (Pro bills 2x/1.5x above 200k, not
+  // modeled). Output already includes thinking tokens. The 3.6-3.8 Flash rates
+  // are promotional through 2026-12-31 and double on 2027-01-01 — override via
+  // MODEL_PRICING_JSON when they change.
+  "gemini-3.1-pro-preview": { input: 2, cachedInput: 0.2, output: 12 },
+  "gemini-3.8-flash": { input: 0.75, cachedInput: 0.075, output: 3.75 },
+  "gemini-3.7-flash": { input: 0.75, cachedInput: 0.075, output: 3.75 },
+  "gemini-3.6-flash": { input: 0.75, cachedInput: 0.075, output: 3.75 },
+  "gemini-3.5-flash": { input: 1.5, cachedInput: 0.15, output: 9 },
+  "gemini-3-flash-preview": { input: 0.5, cachedInput: 0.05, output: 3 },
 };
 
 function loadPricing(): Record<string, ModelPricing> {
@@ -82,6 +93,11 @@ const MODEL_PRICING = loadPricing();
 export function pricingFor(model: string): ModelPricing | undefined {
   const direct = MODEL_PRICING[model];
   if (direct) return direct;
+  // Tolerate the Gemini `models/` resource prefix (e.g. `models/gemini-3.8-flash`).
+  if (model.startsWith("models/")) {
+    const bare = model.slice("models/".length);
+    if (MODEL_PRICING[bare]) return MODEL_PRICING[bare];
+  }
   // Tolerate a HuggingFace-style `:provider` routing suffix (e.g.
   // `zai-org/GLM-5.2:together`) by falling back to the bare model id.
   const withoutProvider = model.replace(/:[^:]+$/, "");

@@ -10,6 +10,7 @@ const EnvSchema = z.object({
   OPENAI_API_KEY: z.string().default(""),
   ANTHROPIC_API_KEY: z.string().default(""),
   HUGGINGFACE_API_KEY: z.string().default(""),
+  GEMINI_API_KEY: z.string().default(""),
 
   /**
    * Optional JSON object overriding / extending the built-in model pricing
@@ -66,11 +67,16 @@ if (!parsed.success) {
 
 export const env: Env = parsed.data;
 
-if (!env.OPENAI_API_KEY && !env.ANTHROPIC_API_KEY && !env.HUGGINGFACE_API_KEY) {
+if (
+  !env.OPENAI_API_KEY &&
+  !env.ANTHROPIC_API_KEY &&
+  !env.HUGGINGFACE_API_KEY &&
+  !env.GEMINI_API_KEY
+) {
   // eslint-disable-next-line no-console
   console.error(
-    "At least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, or HUGGINGFACE_API_KEY must be set " +
-      "(the provider used for each agent stage is selected in agents/llmClient.ts).",
+    "At least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, HUGGINGFACE_API_KEY, or GEMINI_API_KEY " +
+      "must be set (the provider used for each agent stage is selected in agents/llmClient.ts).",
   );
   process.exit(1);
 }

@@ -6,11 +6,11 @@
  *
  *  1. `isMissingPreviousResponseError` classifies exactly the recoverable
  *     "broken chain" errors (OpenAI expired/deleted stored response, or the
- *     Claude / HuggingFace in-process emulation cache missing an id).
+ *     Claude / HuggingFace / Gemini in-process emulation cache missing an id).
  *  2. Sub-agent loops on non-OpenAI providers use manual conversation state:
  *     the full input array is re-sent every turn, so no in-process cache can
- *     lose the conversation. Verified here against the live matrix routing
- *     (step verification on Claude, computation on HuggingFace).
+ *     lose the conversation. Verified here with the routing pinned per test
+ *     (step verification on Claude, computation on HuggingFace and Gemini).
  *  3. When a loop DOES chain on OpenAI server-side state, a broken chain
  *     restarts the loop once from its initial input instead of failing the
  *     whole verification / computation tool call.
@@ -24,6 +24,7 @@ import { test } from "node:test";
 import type { LedgerEntry } from "../../db/types";
 import type { ToolContext } from "../../tools/types";
 import { anthropic } from "../claudeClient";
+import { gemini } from "../geminiClient";
 import { hf } from "../hfClient";
 import {
   isMissingPreviousResponseError,
@@ -52,6 +53,11 @@ import { runComputationSubAgent } from "../symbolicAgent";
 (hf.chat.completions as any).create = async () => {
   throw new Error(
     "Test attempted a LIVE HuggingFace call — install a mock (installHfMock) for this code path.",
+  );
+};
+(gemini.models as any).generateContent = async () => {
+  throw new Error(
+    "Test attempted a LIVE Gemini call — install a mock (installGeminiMock) for this code path.",
   );
 };
 
@@ -114,6 +120,22 @@ function installHfMock(script: any[]): Harness {
     bodies,
     restore: () => {
       (hf.chat.completions as any).create = original;
+    },
+  };
+}
+
+function installGeminiMock(script: any[]): Harness {
+  const bodies: any[] = [];
+  const queue = [...script];
+  const original = (gemini.models as any).generateContent;
+  (gemini.models as any).generateContent = async (params: any) => {
+    bodies.push(JSON.parse(JSON.stringify(params)));
+    return queue.shift();
+  };
+  return {
+    bodies,
+    restore: () => {
+      (gemini.models as any).generateContent = original;
     },
   };
 }
@@ -212,6 +234,15 @@ function hfCompletion(opts: { id?: string; content?: string | null; toolCalls?: 
   };
 }
 
+function geminiResponse(opts: { id?: string; parts: any[] }): any {
+  return {
+    responseId: opts.id ?? "gresp_test",
+    modelVersion: "gemini-test",
+    candidates: [{ index: 0, finishReason: "STOP", content: { role: "model", parts: opts.parts } }],
+    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+  };
+}
+
 // -------------------------------------------------------------------------
 // isMissingPreviousResponseError classification.
 // -------------------------------------------------------------------------
@@ -226,10 +257,16 @@ test("isMissingPreviousResponseError: OpenAI 404 variant", () => {
   assert.equal(isMissingPreviousResponseError(err), true);
 });
 
-test("isMissingPreviousResponseError: claude/hf emulation cache miss", () => {
+test("isMissingPreviousResponseError: claude/hf/gemini emulation cache miss", () => {
   assert.equal(
     isMissingPreviousResponseError(
       new Error("claudeClient: unknown previousResponseId 'resp_abc' (cache miss)"),
+    ),
+    true,
+  );
+  assert.equal(
+    isMissingPreviousResponseError(
+      new Error("geminiClient: unknown previousResponseId 'gemini_x'. The Gemini provider keeps conversation state in-process"),
     ),
     true,
   );
@@ -385,6 +422,71 @@ test("computation on HuggingFace uses manual state: full history re-sent each tu
     assert.deepEqual(roles, ["system", "user", "assistant", "tool"]);
     assert.equal(h.bodies[1].messages[2].tool_calls[0].id, "call_hf_1");
     assert.equal(h.bodies[1].messages[3].tool_call_id, "call_hf_1");
+  } finally {
+    h.restore();
+    restoreRouting();
+  }
+});
+
+test("computation on Gemini uses manual state: full history re-sent each turn with thought signatures", async () => {
+  // Pin the role to Gemini regardless of the current matrices.
+  const restoreRouting = overrideRoutingForTests("fast", "computation", {
+    provider: "gemini",
+    model: "gemini-3.8-flash",
+  });
+
+  const structured = JSON.stringify({
+    status: "success",
+    result: "42",
+    summary: "done",
+    code: "",
+    error: null,
+  });
+
+  const h = installGeminiMock([
+    geminiResponse({
+      id: "t1",
+      parts: [
+        {
+          functionCall: { id: "gcall_1", name: "unknown_tool_for_test", args: { task: "noop" } },
+          thoughtSignature: "SIG_1",
+        },
+      ],
+    }),
+    geminiResponse({ id: "t2", parts: [{ text: structured }] }),
+  ]);
+
+  try {
+    const result = await runComputationSubAgent({
+      instructions: "You are a test computation agent.",
+      promptCacheKey: "test-computation",
+      task: "compute the answer",
+      reasoningSpeed: "fast",
+    });
+    assert.equal(result.status, "success");
+    assert.equal(result.result, "42");
+
+    assert.equal(h.bodies.length, 2);
+    assert.equal(h.bodies[0].model, modelFor("fast", "computation"));
+    assert.equal(h.bodies[0].config.systemInstruction, "You are a test computation agent.");
+    // structured output + function declarations travel together on every turn
+    assert.equal(h.bodies[0].config.responseMimeType, "application/json");
+    assert.ok(Array.isArray(h.bodies[0].config.tools));
+
+    // Turn 1: just the initial user prompt.
+    assert.deepEqual(h.bodies[0].contents.map((c: any) => c.role), ["user"]);
+
+    // Turn 2 re-sends the whole conversation with no previous-response
+    // chaining: user task, model functionCall (signature intact), user
+    // functionResponse matched by id and name.
+    const roles = h.bodies[1].contents.map((c: any) => c.role);
+    assert.deepEqual(roles, ["user", "model", "user"]);
+    const fc = h.bodies[1].contents[1].parts[0];
+    assert.equal(fc.functionCall.id, "gcall_1");
+    assert.equal(fc.thoughtSignature, "SIG_1");
+    const fr = h.bodies[1].contents[2].parts[0];
+    assert.equal(fr.functionResponse.id, "gcall_1");
+    assert.equal(fr.functionResponse.name, "unknown_tool_for_test");
   } finally {
     h.restore();
     restoreRouting();

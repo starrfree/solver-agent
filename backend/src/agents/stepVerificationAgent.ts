@@ -52,7 +52,7 @@ export async function runStepVerificationAgent(
 
   // OpenAI keeps chained turns server-side via previous_response_id, so we
   // only send the new function_call_output items each turn. The Claude /
-  // HuggingFace back-ends merely emulate that chaining with an in-process
+  // HuggingFace / Gemini back-ends merely emulate that chaining with an in-process
   // cache that can be evicted (restart, TTL, capacity) — and they re-send the
   // full history over the wire anyway — so for them we carry the input array
   // ourselves (manual state, same pattern as the full-verification agent).

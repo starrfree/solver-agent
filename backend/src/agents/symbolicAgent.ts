@@ -100,9 +100,9 @@ export async function runComputationSubAgent(
   const reasoningRole: ReasoningRole = options.reasoningRole ?? "computation";
 
   // OpenAI keeps chained turns server-side via previous_response_id; the
-  // Claude / HuggingFace back-ends only emulate that with an evictable
-  // in-process cache (and re-send the full history anyway), so for them we
-  // carry the input array ourselves (manual state).
+  // Claude / HuggingFace / Gemini back-ends only emulate that with an
+  // evictable in-process cache (and re-send the full history anyway), so for
+  // them we carry the input array ourselves (manual state).
   const useServerState = providerFor(options.reasoningSpeed, reasoningRole) === "openai";
 
   const inputItems: ResponseInputItem[] = [

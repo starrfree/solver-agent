@@ -7,7 +7,7 @@
  *   1. Matrix invariants: every (speed, role) resolves to a provider/model/
  *      effort; roles that depend on OpenAI-hosted web_search stay on OpenAI;
  *      every configured model has a pricing entry.
- *   2. webSearch flag is silently DROPPED by the Claude and HuggingFace
+ *   2. webSearch flag is silently DROPPED by the Claude, HuggingFace and Gemini
  *      back-ends (documented behavior — this check makes the silence visible).
  *   3. HuggingFace: an assistant turn carrying BOTH text and tool_calls is
  *      split into two assistant messages and the sanitizer reorders the text
@@ -22,6 +22,10 @@
  *   7. Loop-termination edge: a response with no function calls AND no
  *      message (reasoning-only / truncated) yields finalMessage === null,
  *      which each agent must handle.
+ *   9. Gemini: the fetch_artifact_file item sequence keeps a strictly
+ *      alternating user/model history with functionResponse parts first, the
+ *      turn-1 thought signature is echoed on the functionCall part, and
+ *      parallel calls stay grouped in one model content.
  *   8. Stale-test hazard: if PROVIDER_MATRIX no longer routes fast
  *      main_solver to HuggingFace, the clientAudit usage test's mock misses
  *      and the test makes a LIVE (billed) OpenAI call.
@@ -33,6 +37,8 @@ import type { ResponseInputItem, Response } from "openai/resources/responses/res
 
 import { anthropic } from "../src/agents/claudeClient";
 import * as claudeClient from "../src/agents/claudeClient";
+import { gemini } from "../src/agents/geminiClient";
+import * as geminiClient from "../src/agents/geminiClient";
 import { hf } from "../src/agents/hfClient";
 import * as hfClient from "../src/agents/hfClient";
 import { providerFor, modelFor, effortFor, findFinalMessage } from "../src/agents/llmClient";
@@ -75,6 +81,26 @@ function mockHf(script: unknown[]): { bodies: any[]; restore: () => void } {
     return queue.shift();
   };
   return { bodies, restore: () => ((hf.chat.completions as any).create = original) };
+}
+
+function mockGemini(script: unknown[]): { bodies: any[]; restore: () => void } {
+  const bodies: any[] = [];
+  const queue = [...script];
+  const original = (gemini.models as any).generateContent;
+  (gemini.models as any).generateContent = async (params: any) => {
+    bodies.push(JSON.parse(JSON.stringify(params)));
+    return queue.shift();
+  };
+  return { bodies, restore: () => ((gemini.models as any).generateContent = original) };
+}
+
+function geminiMsg(parts: any[], id = "gresp_dbg"): any {
+  return {
+    responseId: id,
+    modelVersion: "gemini-3.8-flash",
+    candidates: [{ index: 0, finishReason: "STOP", content: { role: "model", parts } }],
+    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+  };
 }
 
 function claudeMsg(content: any[], id = "msg_dbg"): any {
@@ -182,11 +208,19 @@ async function checkWebSearchDrop(): Promise<void> {
   const hfHasSearch = Array.isArray(hh.bodies[0].tools) && hh.bodies[0].tools.some((t: any) => /search/i.test(t.function?.name ?? ""));
   hh.restore();
 
-  if (!claudeHasSearch && !hfHasSearch) {
+  const hg = mockGemini([geminiMsg([{ text: "ok" }])]);
+  await geminiClient.createResponse({ model: "gemini-3.8-flash", input: "q", webSearch: true } as any);
+  const geminiTools = (hg.bodies[0].config?.tools ?? []) as any[];
+  const geminiHasSearch = geminiTools.some(
+    (t: any) => t.googleSearch !== undefined || t.googleSearchRetrieval !== undefined,
+  );
+  hg.restore();
+
+  if (!claudeHasSearch && !hfHasSearch && !geminiHasSearch) {
     report(
       "INFO",
       "webSearch on non-OpenAI",
-      "Confirmed: `webSearch: true` is silently dropped by both the Claude and HF back-ends (no search tool in the wire body). Any role that relies on it must stay on OpenAI — enforced only by comments today.",
+      "Confirmed: `webSearch: true` is silently dropped by the Claude, HF and Gemini back-ends (no search tool in the wire body). Any role that relies on it must stay on OpenAI — enforced only by comments today.",
     );
   } else {
     report("PASS", "webSearch on non-OpenAI", "A search tool surfaced in the non-OpenAI body (unexpected)");
@@ -332,6 +366,69 @@ async function checkClaudeAdjacency(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// 9. Gemini: alternation, functionResponse-first ordering, signature echo,
+//    and grouping of parallel calls.
+// ---------------------------------------------------------------------------
+
+async function checkGeminiHistoryShape(): Promise<void> {
+  const h = mockGemini([geminiMsg([{ text: "ok" }])]);
+  // Same item sequence as the Claude adjacency check, plus a second parallel
+  // call: [reasoning, fc1(signed), fc2, message, fco1, fco2, extra image msg].
+  const input: ResponseInputItem[] = [
+    { type: "message", role: "user", content: "go" } as any,
+    { id: "r1", type: "reasoning", summary: [], content: [{ type: "reasoning_text", text: "t" }] } as any,
+    { type: "function_call", call_id: "f1", name: "fetch_artifact_file", arguments: "{}", __geminiThoughtSignature: "SIG" } as any,
+    { type: "function_call", call_id: "f2", name: "ledger_append_entry", arguments: "{}" } as any,
+    { id: "m1", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "fetching", annotations: [] }] } as any,
+    { type: "function_call_output", call_id: "f1", output: '{"ok":true,"contentDelivered":"input_image"}' } as any,
+    { type: "function_call_output", call_id: "f2", output: '{"ok":true}' } as any,
+    {
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "Inline content of fetched file" },
+        { type: "input_image", image_url: "data:image/png;base64,AAAA", detail: "auto" },
+      ],
+    } as any,
+  ];
+  await geminiClient.createResponse({ model: "gemini-3.8-flash", input });
+  const contents = h.bodies[0].contents as any[];
+  h.restore();
+
+  const roles = contents.map((c) => c.role);
+  const alternating = roles.every((r, i) => i === 0 || r !== roles[i - 1]);
+  report(
+    alternating ? "PASS" : "ISSUE",
+    "Gemini role alternation",
+    `roles on the wire: [${roles.join(",")}] — ${alternating ? "strictly alternating" : "consecutive same-role contents present"}`,
+  );
+
+  const model = contents.find((c) => c.role === "model");
+  const calls = (model?.parts ?? []).filter((p: any) => p.functionCall);
+  const grouped = calls.length === 2;
+  const signed = calls[0]?.thoughtSignature === "SIG" && calls[1]?.thoughtSignature === undefined;
+  report(
+    grouped && signed ? "PASS" : "ISSUE",
+    "Gemini parallel calls + signature",
+    `model content carries ${calls.length} functionCall part(s); first signature=${JSON.stringify(calls[0]?.thoughtSignature)}, second=${JSON.stringify(calls[1]?.thoughtSignature)}`,
+  );
+
+  const after = contents[contents.indexOf(model) + 1];
+  const parts = (after?.parts ?? []) as any[];
+  const responsesFirst =
+    parts.length >= 4 &&
+    parts[0].functionResponse?.name === "fetch_artifact_file" &&
+    parts[1].functionResponse?.name === "ledger_append_entry" &&
+    parts[2].text !== undefined &&
+    parts[3].inlineData?.mimeType === "image/png";
+  report(
+    responsesFirst ? "PASS" : "ISSUE",
+    "Gemini functionResponse ordering",
+    `user content after the calls: [${parts.map((p) => Object.keys(p)[0]).join(", ")}] — functionResponse parts ${responsesFirst ? "come first, then the extra text + inline image" : "are NOT first / image not inlined"}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 7. Reasoning-only response → finalMessage null.
 // ---------------------------------------------------------------------------
 
@@ -370,6 +467,7 @@ async function main(): Promise<void> {
   await checkHfSplitTurn();
   await checkHfImageForwarding();
   await checkClaudeAdjacency();
+  await checkGeminiHistoryShape();
   checkReasoningOnlyTermination();
 
   console.log("\n=== Agent loop audit (mock-based, no network) ===\n");
