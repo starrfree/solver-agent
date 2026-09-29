@@ -48,135 +48,199 @@ interface LlmTarget {
 
 type Matrix<T> = Record<ReasoningSpeed, Record<ReasoningRole, T>>;
 
+// ======================= OPENAI =================================
 const PROVIDER_MATRIX: Matrix<LlmProvider> = {
   high: {
-    // Default all-OpenAI high configuration:
     main_solver: "openai",
     full_verification: "openai",
     step_verification: "openai",
     computation: "openai",
     cy_analyst: "openai",
     proof_narrator: "openai",
-    // main_solver: "claude",
-    // full_verification: "claude",
-    // step_verification: "claude",
-    // computation: "claude",
-    // cy_analyst: "claude",
-    // Gemini high configuration:
-    // main_solver: "gemini",
-    // full_verification: "gemini",
-    // step_verification: "gemini",
-    // computation: "gemini",
-    // cy_analyst: "gemini",
-    // Must stay on OpenAI: the Reference Seeker relies on the hosted
-    // web_search tool, which only the OpenAI back-end supports.
     reference_seeker: "openai",
-    // proof_narrator: "claude",
-    // proof_narrator: "gemini",
-    // Stays on OpenAI: the side-talk UI can enable hosted web_search
-    // per message, which only the OpenAI back-end supports.
     side_talk: "openai",
   },
   fast: {
-    // Default all-OpenAI fast configuration:
     main_solver: "openai",
     full_verification: "openai",
     step_verification: "openai",
     computation: "openai",
     cy_analyst: "openai",
-    // main_solver: "huggingface",
-    // full_verification: "huggingface",
-    // step_verification: "huggingface",
-    // computation: "huggingface",
-    // cy_analyst: "huggingface",
-    // Gemini fast configuration:
-    // main_solver: "gemini",
-    // full_verification: "gemini",
-    // step_verification: "gemini",
-    // computation: "gemini",
-    // cy_analyst: "gemini",
-    // Must stay on OpenAI (hosted web_search).
-    reference_seeker: "openai",
     proof_narrator: "openai",
-    // proof_narrator: "huggingface",
-    // proof_narrator: "gemini",
-    // Stays on OpenAI (optional hosted web_search per message).
+    reference_seeker: "openai",
     side_talk: "openai",
   },
 };
 
 const MODEL_MATRIX: Matrix<string> = {
   high: {
-    // Default all-OpenAI high configuration:
     main_solver: "gpt-5.6-sol",
     full_verification: "gpt-5.6-sol",
     step_verification: "gpt-5.6-sol",
     computation: "gpt-5.6-sol",
     cy_analyst: "gpt-5.6-sol",
     proof_narrator: "gpt-5.6-sol",
-    //
-    // Claude high configuration (list state Aug 2026): Fable 5 is Anthropic's
-    // strongest reasoner (87.8% FrontierMath Tier 4) and drives the main
-    // solver; Opus 5 — the flagship default at half Fable's price — covers
-    // verification and computation; Sonnet 5 writes the walkthrough.
-    // main_solver: "claude-fable-5",
-    // full_verification: "claude-opus-5",
-    // step_verification: "claude-opus-5",
-    // computation: "claude-opus-5",
-    // cy_analyst: "claude-opus-5",
-    // proof_narrator: "claude-sonnet-5",
-    //
-    // Gemini high configuration (list state Sep 2026): Gemini 3.1 Pro is
-    // Google's strongest reasoner and drives the main solver, the full
-    // verifier and the CY analyst; Gemini 3.8 Flash (their most capable
-    // Flash tier, built for long-horizon agentic work) covers step
-    // verification, computation and narration at a fifth of Pro's price.
-    // Both support structured output combined with function calling.
-    // main_solver: "gemini-3.1-pro-preview",
-    // full_verification: "gemini-3.1-pro-preview",
-    // step_verification: "gemini-3.8-flash",
-    // computation: "gemini-3.8-flash",
-    // cy_analyst: "gemini-3.1-pro-preview",
-    // proof_narrator: "gemini-3.8-flash",
-
-    reference_seeker: "gpt-5.6-sol",
-    side_talk: "gpt-5.6-sol",
+    reference_seeker: "gpt-6-sol",
+    side_talk: "gpt-6-sol",
   },
   fast: {
-    // Default all-OpenAI fast configuration:
-    main_solver: "gpt-5.6-luna",
-    full_verification: "gpt-5.6-luna",
-    step_verification: "gpt-5.6-luna",
-    computation: "gpt-5.6-luna",
-    cy_analyst: "gpt-5.6-luna",
-    proof_narrator: "gpt-5.6-sol",
-    //
-    // HuggingFace router (:together) fast configuration (list state Aug
-    // 2026): DeepSeek V4 Pro 0813 is the strongest open-weight reasoner and
-    // solves; GLM-5.2 (~168 tok/s) cross-checks it from a different model
-    // family; V4 Flash 0731 covers cheap agentic coding and narration at
-    // $0.14/$0.28 per MTok.
-    // main_solver: "deepseek-ai/DeepSeek-V4-Pro-0813:together",
-    // full_verification: "zai-org/GLM-5.2:together",
-    // step_verification: "zai-org/GLM-5.2:together",
-    // computation: "deepseek-ai/DeepSeek-V4-Flash-0731:together",
-    // cy_analyst: "deepseek-ai/DeepSeek-V4-Pro-0813:together",
-    // proof_narrator: "deepseek-ai/DeepSeek-V4-Flash-0731:together",
-    //
-    // Gemini fast configuration (list state Sep 2026): Gemini 3.8 Flash
-    // everywhere — $0.75/$3.75 per MTok with a 1M context, thinking_level
-    // HIGH for solving and verification.
-    // main_solver: "gemini-3.8-flash",
-    // full_verification: "gemini-3.8-flash",
-    // step_verification: "gemini-3.8-flash",
-    // computation: "gemini-3.8-flash",
-    // cy_analyst: "gemini-3.8-flash",
-    // proof_narrator: "gemini-3.8-flash",
-
-    reference_seeker: "gpt-5.6-luna",
-    side_talk: "gpt-5.6-terra",
+    main_solver: "gpt-6-luna",
+    full_verification: "gpt-6-luna",
+    step_verification: "gpt-6-luna",
+    computation: "gpt-6-luna",
+    cy_analyst: "gpt-6-luna",
+    proof_narrator: "gpt-6-sol",
+    reference_seeker: "gpt-6-sol",
+    side_talk: "gpt-6-sol",
   },
 };
+
+/*// ======================= CLAUDE ==========================================
+
+const PROVIDER_MATRIX: Matrix<LlmProvider> = {
+  high: {
+    main_solver: "claude",
+    full_verification: "claude",
+    step_verification: "claude",
+    computation: "claude",
+    cy_analyst: "claude",
+    proof_narrator: "claude",
+    reference_seeker: "openai",
+    side_talk: "openai",
+  },
+  fast: {
+    main_solver: "claude",
+    full_verification: "claude",
+    step_verification: "claude",
+    computation: "claude",
+    cy_analyst: "claude",
+    proof_narrator: "claude",
+    reference_seeker: "openai",
+    side_talk: "openai",
+  },
+};
+
+const MODEL_MATRIX: Matrix<string> = {
+  high: {
+    main_solver: "claude-opus-5-5",
+    full_verification: "claude-opus-5-5",
+    step_verification: "claude-opus-5-5",
+    computation: "claude-opus-5-5",
+    cy_analyst: "claude-opus-5-5",
+    proof_narrator: "claude-sonnet-5-5",
+    reference_seeker: "gpt-6-sol",
+    side_talk: "gpt-6-sol",
+  },
+  fast: {
+    main_solver: "claude-sonnet-5-5",
+    full_verification: "claude-sonnet-5-5",
+    step_verification: "claude-sonnet-5-5",
+    computation: "claude-sonnet-5-5",
+    cy_analyst: "claude-sonnet-5-5",
+    proof_narrator: "claude-sonnet-5-5",
+    reference_seeker: "gpt-6-sol",
+    side_talk: "gpt-6-sol",
+  },
+};
+*/
+
+/*// ======================= GEMINI ==========================================
+
+const PROVIDER_MATRIX: Matrix<LlmProvider> = {
+  high: {
+    main_solver: "gemini",
+    full_verification: "gemini",
+    step_verification: "gemini",
+    computation: "gemini",
+    cy_analyst: "gemini",
+    proof_narrator: "gemini",
+    reference_seeker: "openai",
+    side_talk: "openai",
+  },
+  fast: {
+    main_solver: "gemini",
+    full_verification: "gemini",
+    step_verification: "gemini",
+    computation: "gemini",
+    cy_analyst: "gemini",
+    proof_narrator: "gemini",
+    reference_seeker: "openai",
+    side_talk: "openai",
+  },
+};
+
+const MODEL_MATRIX: Matrix<string> = {
+  high: {
+    main_solver: "gemini-3.1-pro-preview",
+    full_verification: "gemini-3.1-pro-preview",
+    step_verification: "gemini-3.8-flash",
+    computation: "gemini-3.8-flash",
+    cy_analyst: "gemini-3.1-pro-preview",
+    proof_narrator: "gemini-3.8-flash",
+    reference_seeker: "gpt-6-sol",
+    side_talk: "gpt-6-sol",
+  },
+  fast: {
+    main_solver: "gemini-3.8-flash",
+    full_verification: "gemini-3.8-flash",
+    step_verification: "gemini-3.8-flash",
+    computation: "gemini-3.8-flash",
+    cy_analyst: "gemini-3.8-flash",
+    proof_narrator: "gemini-3.8-flash",
+    reference_seeker: "gpt-6-sol",
+    side_talk: "gpt-6-sol",
+  },
+};
+*/
+
+/*// ======================= HUGGINGFACE =====================================
+
+const PROVIDER_MATRIX: Matrix<LlmProvider> = {
+  high: {
+    main_solver: "huggingface",
+    full_verification: "huggingface",
+    step_verification: "huggingface",
+    computation: "huggingface",
+    cy_analyst: "huggingface",
+    proof_narrator: "huggingface",
+    reference_seeker: "openai",
+    side_talk: "openai",
+  },
+  fast: {
+    main_solver: "huggingface",
+    full_verification: "huggingface",
+    step_verification: "huggingface",
+    computation: "huggingface",
+    cy_analyst: "huggingface",
+    proof_narrator: "huggingface",
+    reference_seeker: "openai",
+    side_talk: "openai",
+  },
+};
+
+const MODEL_MATRIX: Matrix<string> = {
+  high: {
+    main_solver: "deepseek-ai/DeepSeek-V4-Pro-0813:together",
+    full_verification: "zai-org/GLM-5.2:together",
+    step_verification: "zai-org/GLM-5.2:together",
+    computation: "deepseek-ai/DeepSeek-V4-Flash-0731:together",
+    cy_analyst: "deepseek-ai/DeepSeek-V4-Pro-0813:together",
+    proof_narrator: "deepseek-ai/DeepSeek-V4-Flash-0731:together",
+    reference_seeker: "gpt-6-sol",
+    side_talk: "gpt-6-sol",
+  },
+  fast: {
+    main_solver: "deepseek-ai/DeepSeek-V4-Pro-0813:together",
+    full_verification: "zai-org/GLM-5.2:together",
+    step_verification: "zai-org/GLM-5.2:together",
+    computation: "deepseek-ai/DeepSeek-V4-Flash-0731:together",
+    cy_analyst: "deepseek-ai/DeepSeek-V4-Pro-0813:together",
+    proof_narrator: "deepseek-ai/DeepSeek-V4-Flash-0731:together",
+    reference_seeker: "gpt-6-sol",
+    side_talk: "gpt-6-sol",
+  },
+};
+*/
 
 const EFFORT_MATRIX: Matrix<ReasoningEffort> = {
   high: {
@@ -187,7 +251,7 @@ const EFFORT_MATRIX: Matrix<ReasoningEffort> = {
     cy_analyst: "high",
     reference_seeker: "medium",
     proof_narrator: "medium",
-    side_talk: "medium",
+    side_talk: "high",
   },
   fast: {
     main_solver: "high",
@@ -196,7 +260,7 @@ const EFFORT_MATRIX: Matrix<ReasoningEffort> = {
     computation: "high",
     cy_analyst: "high",
     reference_seeker: "medium",
-    proof_narrator: "low",
+    proof_narrator: "medium",
     side_talk: "high",
   },
 };

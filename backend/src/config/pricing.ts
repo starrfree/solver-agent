@@ -30,6 +30,9 @@ export interface UsageLike {
 }
 
 const DEFAULT_PRICING: Record<string, ModelPricing> = {
+  // GPT-6 Sol (developers.openai.com, Sep 2026), prompts <= 272K input tokens;
+  // above that the full request bills 2x input/cache and 1.5x output (not modeled).
+  "gpt-6-sol": { input: 2, cachedInput: 0.2, output: 10 },
   "gpt-5.6-sol": { input: 4, cachedInput: 0.4, output: 20 },
   "gpt-5.6-terra": { input: 2.5, cachedInput: 0.25, output: 15 },
   "gpt-5.6-luna": { input: 1, cachedInput: 0.1, output: 6 },
@@ -37,6 +40,8 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // Anthropic list pricing (platform.claude.com, Aug 2026). Cache reads bill
   // at 10% of input; the 1.25x/2x cache-write premiums are not modeled here.
   "claude-fable-5": { input: 10, cachedInput: 1, output: 50 },
+  "claude-opus-5-5": { input: 4, cachedInput: 0.2, output: 20 },
+  "claude-sonnet-5-5": { input: 2, cachedInput: 0.2, output: 10 },
   "claude-opus-5": { input: 5, cachedInput: 0.5, output: 25 },
   "claude-sonnet-5": { input: 2, cachedInput: 0.2, output: 10 },
   "claude-sonnet-4-6": { input: 3, cachedInput: 0.3, output: 15 },
