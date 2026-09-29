@@ -4,6 +4,8 @@
 
 Solver Agent splits a hard derivation into specialized LLM agents (a coordinating solver, computer-algebra and numerical sub-agents, an optional Calabi-Yau analyst, a literature-search agent and two adversarial verifiers), gives them a sandboxed code environment, and forces every step through an append-only **ledger** that is independently re-examined before an answer is ever returned to you. The result is a proof you can audit, replay, fork and interrogate, rather than what one usually gets out of a chat bot conversation.
 
+Solver Agent was conceived, designed and written by **Eliott Morgensztern**.
+
 To run Solver Agent on your own machine, follow the step-by-step [Installation](#installation) guide, which assumes no prior development experience and covers every tool from Git to MongoDB and the provider API keys.
 
 ![Solver Agent architecture: the researcher talks to the Main solver, which delegates to specialized sub-agents (symbolic, numerical, Calabi-Yau analysis, reference lookup) that run code in a sandbox; every step is appended to a persistent ledger which the step and full-solution verification agents review.](diagram.png)
